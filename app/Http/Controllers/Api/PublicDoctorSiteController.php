@@ -103,7 +103,9 @@ class PublicDoctorSiteController extends Controller
                 'ozet' => \Illuminate\Support\Str::limit(strip_tags((string) $b->icerik), 160),
                 'icerik' => $b->icerik,
                 'resim' => $b->resim
-                    ? site_media_url(str_starts_with($b->resim, 'storage/') || str_starts_with($b->resim, 'uploads/')
+                    ? site_media_url(str_starts_with($b->resim, 'storage/')
+                        || str_starts_with($b->resim, 'uploads/')
+                        || preg_match('#^(https?:)?//#i', $b->resim)
                         ? $b->resim
                         : 'storage/'.$b->resim)
                     : null,
