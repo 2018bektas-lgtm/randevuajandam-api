@@ -10,6 +10,8 @@ use App\Models\DoktorCalismaSaati;
 use App\Models\DoktorIzin;
 use App\Models\Hasta;
 use App\Models\Hizmet;
+use App\Models\Il;
+use App\Models\Ilce;
 use App\Models\Randevu;
 use App\Models\RandevuAyari;
 use Illuminate\Support\Facades\DB;
@@ -85,7 +87,24 @@ class DoctorPanelApiController extends Controller
             'web_sitesi' => ['nullable', 'string', 'max:255'],
             'enlem' => ['nullable', 'numeric'],
             'boylam' => ['nullable', 'numeric'],
+            'il' => ['nullable', 'string', 'max:100', 'exists:iller,ad'],
+            'ilce' => ['nullable', 'string', 'max:100'],
         ]);
+
+        if (array_key_exists('il', $validated)) {
+            $il = Il::query()->where('ad', $validated['il'])->firstOrFail();
+            $validated['il_id'] = $il->id;
+            unset($validated['il']);
+
+            if (array_key_exists('ilce', $validated)) {
+                $ilce = Ilce::query()
+                    ->where('il_id', $il->id)
+                    ->where('ad', $validated['ilce'])
+                    ->firstOrFail();
+                $validated['ilce_id'] = $ilce->id;
+            }
+        }
+        unset($validated['ilce']);
 
         if ($request->hasFile('profil_resmi')) {
             $request->validate([
