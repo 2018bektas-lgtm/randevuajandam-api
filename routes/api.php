@@ -179,6 +179,9 @@ $registerDoctorPanelRoutes = function (): void {
         Route::post('/giderler/{id}/guncelle', [DoctorFinansApiController::class, 'updateGider']);
         Route::delete('/giderler/{id}', [DoctorFinansApiController::class, 'destroyGider']);
         Route::get('/hasta-bakiyeleri', [DoctorFinansApiController::class, 'hastaBakiyeleri']);
+        Route::get('/hasta/{hastaId}', [DoctorFinansApiController::class, 'hastaHesap'])->whereNumber('hastaId');
+        Route::post('/hasta/{hastaId}/tahsilat', [DoctorFinansApiController::class, 'hastaTahsilat'])->whereNumber('hastaId');
+        Route::post('/hasta/{hastaId}/borc', [DoctorFinansApiController::class, 'hastaBorcEkle'])->whereNumber('hastaId');
         Route::get('/rapor', [DoctorFinansApiController::class, 'rapor']);
     });
 };

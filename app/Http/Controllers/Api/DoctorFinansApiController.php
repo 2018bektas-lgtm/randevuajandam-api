@@ -459,6 +459,159 @@ class DoctorFinansApiController extends Controller
         return response()->json(['success' => true, 'data' => $items]);
     }
 
+    public function hastaHesap(Request $request, int $hastaId): JsonResponse
+    {
+        $doktor = $this->doktor($request);
+        $hasta = $this->resolveHasta($doktor, $hastaId);
+
+        $odemeler = $doktor->odemeler()
+            ->where('hasta_id', $hasta->id)
+            ->with(['hizmet', 'finansKategori', 'kalemler'])
+            ->orderByDesc('odeme_tarihi')
+            ->orderByDesc('id')
+            ->get();
+
+        $aktif = $odemeler->where('durum', '!=', 'iptal');
+        $toplamBorc = (float) $aktif->sum('tutar');
+        $toplamOdenen = (float) $aktif->sum('odenen_tutar');
+
+        $faturalar = $odemeler->map(function ($o) {
+            return [
+                'id' => $o->id,
+                'tutar' => (float) $o->tutar,
+                'odenen_tutar' => (float) $o->odenen_tutar,
+                'kalan' => max(0, (float) $o->tutar - (float) $o->odenen_tutar),
+                'durum' => $o->durum,
+                'odeme_yontemi' => $o->odeme_yontemi,
+                'odeme_tarihi' => optional($o->odeme_tarihi)->format('Y-m-d') ?? (string) $o->odeme_tarihi,
+                'aciklama' => $o->aciklama,
+                'hizmet' => $o->hizmet?->ad,
+                'kategori' => $o->finansKategori?->ad,
+                'kalemler' => $o->kalemler->map(fn ($k) => [
+                    'id' => $k->id,
+                    'tutar' => (float) $k->tutar,
+                    'tarih' => optional($k->tarih)->format('Y-m-d') ?? (string) $k->tarih,
+                    'odeme_yontemi' => $k->odeme_yontemi,
+                    'not' => $k->not,
+                ])->values(),
+            ];
+        })->values();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'hasta' => [
+                    'id' => $hasta->id,
+                    'ad_soyad' => trim($hasta->ad.' '.$hasta->soyad),
+                    'telefon' => $hasta->telefon,
+                    'e_posta' => $hasta->e_posta,
+                ],
+                'ozet' => [
+                    'toplam_borc' => $toplamBorc,
+                    'toplam_odenen' => $toplamOdenen,
+                    'kalan_bakiye' => $toplamBorc - $toplamOdenen,
+                ],
+                'faturalar' => $faturalar,
+                'acik_faturalar' => $faturalar->whereIn('durum', ['beklemede', 'kismi_odeme'])->values(),
+            ],
+        ]);
+    }
+
+    public function hastaTahsilat(Request $request, int $hastaId): JsonResponse
+    {
+        $doktor = $this->doktor($request);
+        $hasta = $this->resolveHasta($doktor, $hastaId);
+        $v = $request->validate([
+            'odeme_id' => ['required', 'integer', 'exists:odemeler,id'],
+            'tutar' => ['required', 'numeric', 'min:0.01'],
+            'tarih' => ['required', 'date'],
+            'odeme_yontemi' => ['required', 'in:nakit,kredi_karti,havale,online'],
+            'not' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $odeme = $doktor->odemeler()->where('hasta_id', $hasta->id)->where('id', $v['odeme_id'])->firstOrFail();
+        if (in_array($odeme->durum, ['iptal', 'odendi'], true)) {
+            return response()->json(['success' => false, 'message' => 'Fatura tahsilata kapalı.'], 422);
+        }
+        $kalan = max(0, (float) $odeme->tutar - (float) $odeme->odenen_tutar);
+        if ((float) $v['tutar'] > $kalan + 0.001) {
+            return response()->json(['success' => false, 'message' => 'Tutar kalan bakiyeyi aşıyor.'], 422);
+        }
+
+        $odeme->kalemler()->create([
+            'tutar' => $v['tutar'],
+            'tarih' => $v['tarih'],
+            'odeme_yontemi' => $v['odeme_yontemi'],
+            'not' => $v['not'] ?? 'Hasta hesabından tahsilat',
+        ]);
+        if (method_exists($odeme, 'odenenTutariGuncelle')) {
+            $odeme->odenenTutariGuncelle();
+        }
+
+        return response()->json(['success' => true, 'message' => 'Tahsilat kaydedildi.', 'data' => $odeme->fresh(['kalemler'])], 201);
+    }
+
+    public function hastaBorcEkle(Request $request, int $hastaId): JsonResponse
+    {
+        $doktor = $this->doktor($request);
+        $hasta = $this->resolveHasta($doktor, $hastaId);
+        $v = $request->validate([
+            'tutar' => ['required', 'numeric', 'min:0.01'],
+            'odeme_tarihi' => ['required', 'date'],
+            'hizmet_id' => ['nullable', 'integer', 'exists:hizmetler,id'],
+            'finans_kategori_id' => ['nullable', 'integer', 'exists:finans_kategoriler,id'],
+            'aciklama' => ['nullable', 'string', 'max:1000'],
+            'ilk_odeme_tutar' => ['nullable', 'numeric', 'min:0'],
+            'ilk_odeme_yontemi' => ['nullable', 'in:nakit,kredi_karti,havale,online'],
+        ]);
+
+        $ilk = (float) ($v['ilk_odeme_tutar'] ?? 0);
+        $durum = 'beklemede';
+        if ($ilk >= (float) $v['tutar']) {
+            $durum = 'odendi';
+        } elseif ($ilk > 0) {
+            $durum = 'kismi_odeme';
+        }
+
+        $odeme = $doktor->odemeler()->create([
+            'hasta_id' => $hasta->id,
+            'hizmet_id' => $v['hizmet_id'] ?? null,
+            'finans_kategori_id' => $v['finans_kategori_id'] ?? null,
+            'tutar' => $v['tutar'],
+            'odenen_tutar' => $ilk,
+            'odeme_yontemi' => $v['ilk_odeme_yontemi'] ?? 'nakit',
+            'durum' => $durum,
+            'aciklama' => $v['aciklama'] ?? null,
+            'odeme_tarihi' => $v['odeme_tarihi'],
+        ]);
+        if ($ilk > 0) {
+            $odeme->kalemler()->create([
+                'tutar' => $ilk,
+                'tarih' => $v['odeme_tarihi'],
+                'odeme_yontemi' => $v['ilk_odeme_yontemi'] ?? 'nakit',
+                'not' => 'İlk ödeme',
+            ]);
+        }
+
+        return response()->json(['success' => true, 'message' => 'Borç eklendi.', 'data' => $odeme->fresh(['kalemler'])], 201);
+    }
+
+    protected function resolveHasta(Doktor $doktor, int $hastaId): Hasta
+    {
+        $hasta = Hasta::query()
+            ->whereKey($hastaId)
+            ->where(function ($q) use ($doktor) {
+                $q->whereHas('randevular', fn ($r) => $r->where('doktor_id', $doktor->id))
+                    ->orWhereHas('odemeler', fn ($o) => $o->where('doktor_id', $doktor->id));
+            })
+            ->first();
+        if (! $hasta) {
+            abort(404, 'Hasta hesabı bulunamadı.');
+        }
+
+        return $hasta;
+    }
+
     public function rapor(Request $request): JsonResponse
     {
         $doktor = $this->doktor($request);
