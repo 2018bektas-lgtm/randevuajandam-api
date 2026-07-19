@@ -289,6 +289,7 @@ class DoctorPanelApiController extends Controller
 
             $isOnline = method_exists($randevu, 'isOnline') && $randevu->isOnline();
             $joinUrl = null;
+            $hekimJoinUrl = null;
             $canJoin = false;
             if ($isOnline && $randevu->durum === 'onaylandi') {
                 try {
@@ -298,6 +299,8 @@ class DoctorPanelApiController extends Controller
                     }
                     $joinUrl = $meet->platformJoinUrl($randevu);
                     $canJoin = $meet->canJoin($randevu);
+                    $siteUrl = rtrim((string) env('SITE_URL', config('app.url')), '/');
+                    $hekimJoinUrl = $siteUrl.'/hekim/gorusme/'.$randevu->id.'/app';
                 } catch (\Throwable) {
                     //
                 }
@@ -326,6 +329,7 @@ class DoctorPanelApiController extends Controller
                     'saat' => substr($saatStr, 0, 5),
                     'gorusme_tipi' => $randevu->gorusme_tipi ?? 'yuz_yuze',
                     'platform_join_url' => $joinUrl,
+                    'hekim_join_url' => $hekimJoinUrl,
                     'can_join' => $canJoin,
                 ],
             ];
@@ -1315,15 +1319,83 @@ class DoctorPanelApiController extends Controller
         ]);
     }
 
+    /**
+     * Hekim online görüşme oturumu — platform SITE_URL üzerinde WebRTC odası.
+     * Sinyal ana sitede kalır (hasta ile aynı cache); hekim bearer ile /app URL açar.
+     */
+    public function meetingSession(Request $request, int $id): JsonResponse
+    {
+        $doktor = $this->doktor($request);
+        $randevu = $doktor->randevular()->with(['hasta', 'hizmet', 'doktor'])->findOrFail($id);
+
+        if (! method_exists($randevu, 'isOnline') || ! $randevu->isOnline()) {
+            return response()->json(['success' => false, 'message' => 'Bu randevu online görüşme değil.'], 422);
+        }
+        if ($randevu->durum !== 'onaylandi') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Görüşme için randevunun onaylı olması gerekir.',
+                'data' => ['can_join' => false, 'durum' => $randevu->durum],
+            ], 422);
+        }
+
+        try {
+            $meet = app(\App\Services\MeetingRoomService::class);
+            $randevu = $meet->ensureRoom($randevu);
+            $canJoin = $meet->canJoin($randevu);
+            $window = $meet->joinWindow($randevu);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Görüşme odası hazırlanamadı: '.$e->getMessage(),
+            ], 500);
+        }
+
+        $siteUrl = rtrim((string) env('SITE_URL', config('app.url')), '/');
+        $hekimAppUrl = $siteUrl.'/hekim/gorusme/'.$randevu->id.'/app';
+        $patientUrl = null;
+        try {
+            $patientUrl = $meet->platformJoinUrl($randevu);
+        } catch (\Throwable) {
+            //
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'randevu_id' => $randevu->id,
+                'can_join' => $canJoin,
+                'online_mi' => true,
+                'role' => 'hekim',
+                'display_name' => (string) ($doktor->ad_soyad ?? 'Hekim'),
+                'room' => $randevu->meeting_room_id,
+                'hekim_join_url' => $hekimAppUrl,
+                'platform_join_url' => $patientUrl,
+                'window' => $window ? [
+                    'baslangic' => $window[0]->toIso8601String(),
+                    'bitis' => $window[1]->toIso8601String(),
+                ] : null,
+                'hasta_adi' => trim(($randevu->hasta->ad ?? $randevu->ad).' '.($randevu->hasta->soyad ?? $randevu->soyad)),
+                'tarih' => $randevu->tarih instanceof \DateTimeInterface
+                    ? $randevu->tarih->format('Y-m-d')
+                    : (string) $randevu->tarih,
+                'saat' => substr((string) $randevu->saat, 0, 5),
+            ],
+        ]);
+    }
+
     protected function randevuPayload(Randevu $r): array
     {
         $canJoin = false;
         $joinUrl = null;
+        $hekimJoinUrl = null;
         try {
             if (method_exists($r, 'isOnline') && $r->isOnline() && $r->durum === 'onaylandi') {
                 $meet = app(\App\Services\MeetingRoomService::class);
                 $canJoin = $meet->canJoin($r);
                 $joinUrl = $meet->platformJoinUrl($r);
+                $siteUrl = rtrim((string) env('SITE_URL', config('app.url')), '/');
+                $hekimJoinUrl = $siteUrl.'/hekim/gorusme/'.$r->id.'/app';
             }
         } catch (\Throwable) {
             //
@@ -1338,6 +1410,7 @@ class DoctorPanelApiController extends Controller
             'meeting_provider' => $r->meeting_provider,
             'can_join' => $canJoin,
             'platform_join_url' => $joinUrl,
+            'hekim_join_url' => $hekimJoinUrl,
             'ad' => $r->ad,
             'soyad' => $r->soyad,
             'telefon' => $r->telefon,

@@ -19,6 +19,8 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1/public')
     ->middleware(['doctor.site.key', 'throttle:60,1'])
     ->group(function () {
+        // Tek istekte profil + içerik + hizmet (hekim sitesi hızı)
+        Route::get('/bootstrap', [PublicDoctorSiteController::class, 'bootstrap']);
         Route::get('/profile', [PublicDoctorSiteController::class, 'profile']);
         Route::get('/services', [PublicDoctorSiteController::class, 'services']);
         Route::get('/site-content', [PublicDoctorSiteController::class, 'siteContent']);
@@ -191,8 +193,21 @@ Route::prefix('v1/doctor')
     ->middleware(['doctor.site.key', 'throttle:60,1'])
     ->group(function () use ($registerDoctorPanelRoutes) {
         Route::post('/auth/login', [DoctorAuthApiController::class, 'login'])->middleware('throttle:12,1');
+        Route::post('/auth/two-factor', [DoctorAuthApiController::class, 'verifyTwoFactor'])->middleware('throttle:12,1');
 
-        Route::middleware('doctor.api.token')->group($registerDoctorPanelRoutes);
+        Route::middleware('doctor.api.token')->group(function () use ($registerDoctorPanelRoutes) {
+            $registerDoctorPanelRoutes();
+
+            // 2FA yönetimi
+            Route::get('/two-factor', [DoctorAuthApiController::class, 'twoFactorStatus']);
+            Route::post('/two-factor/setup', [DoctorAuthApiController::class, 'twoFactorBeginSetup']);
+            Route::post('/two-factor/confirm', [DoctorAuthApiController::class, 'twoFactorConfirmSetup']);
+            Route::post('/two-factor/disable', [DoctorAuthApiController::class, 'twoFactorDisable']);
+            Route::post('/two-factor/recovery', [DoctorAuthApiController::class, 'twoFactorRegenerateRecovery']);
+
+            // Online görüşme — hekim katılım bilgisi (platform SITE_URL WebRTC odası)
+            Route::get('/randevular/{id}/gorusme', [DoctorPanelApiController::class, 'meetingSession'])->whereNumber('id');
+        });
     });
 
 // Clinic doctor panel (klinik site key + bearer — kliniğe bağlı hekimler)
@@ -200,6 +215,16 @@ Route::prefix('v1/clinic/doctor')
     ->middleware(['clinic.site.key', 'throttle:60,1'])
     ->group(function () use ($registerDoctorPanelRoutes) {
         Route::post('/auth/login', [DoctorAuthApiController::class, 'clinicLogin'])->middleware('throttle:12,1');
+        Route::post('/auth/two-factor', [DoctorAuthApiController::class, 'verifyTwoFactor'])->middleware('throttle:12,1');
 
-        Route::middleware('doctor.api.token')->group($registerDoctorPanelRoutes);
+        Route::middleware('doctor.api.token')->group(function () use ($registerDoctorPanelRoutes) {
+            $registerDoctorPanelRoutes();
+
+            Route::get('/two-factor', [DoctorAuthApiController::class, 'twoFactorStatus']);
+            Route::post('/two-factor/setup', [DoctorAuthApiController::class, 'twoFactorBeginSetup']);
+            Route::post('/two-factor/confirm', [DoctorAuthApiController::class, 'twoFactorConfirmSetup']);
+            Route::post('/two-factor/disable', [DoctorAuthApiController::class, 'twoFactorDisable']);
+            Route::post('/two-factor/recovery', [DoctorAuthApiController::class, 'twoFactorRegenerateRecovery']);
+            Route::get('/randevular/{id}/gorusme', [DoctorPanelApiController::class, 'meetingSession'])->whereNumber('id');
+        });
     });

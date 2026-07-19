@@ -29,11 +29,37 @@ class PublicDoctorSiteController extends Controller
     }
 
     /**
+     * Single round-trip for doctor-site homepage (profile + content + services).
+     * Cuts 3–4 sequential public API calls to one.
+     */
+    public function bootstrap(Request $request): JsonResponse
+    {
+        $doktor = $this->doktor($request);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'profile' => $this->profilePayload($doktor),
+                'content' => $this->siteContentPayload($doktor),
+                'services' => $this->servicesPayload($doktor),
+            ],
+        ]);
+    }
+
+    /**
      * Public doctor profile for doctor-site landing.
      */
     public function profile(Request $request): JsonResponse
     {
-        $doktor = $this->doktor($request)->load(['il', 'ilce', 'branslar', 'randevuAyari', 'calismaSaatleri']);
+        return response()->json([
+            'success' => true,
+            'data' => $this->profilePayload($this->doktor($request)),
+        ]);
+    }
+
+    protected function profilePayload(Doktor $doktor): array
+    {
+        $doktor->loadMissing(['il', 'ilce', 'branslar', 'randevuAyari', 'calismaSaatleri']);
 
         $gunAdlari = [1 => 'Pazartesi', 2 => 'Salı', 3 => 'Çarşamba', 4 => 'Perşembe', 5 => 'Cuma', 6 => 'Cumartesi', 7 => 'Pazar'];
         $calisma = [];
@@ -48,40 +74,37 @@ class PublicDoctorSiteController extends Controller
             }
         }
 
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'id' => $doktor->id,
-                'ad_soyad' => $doktor->ad_soyad,
-                'unvan' => $doktor->unvan,
-                'uzmanlik_alani' => $doktor->uzmanlik_alani,
-                'biyografi' => $doktor->biyografi,
-                'mezuniyet' => $doktor->mezuniyet ?? [],
-                'telefon' => $doktor->telefon,
-                'e_posta' => $doktor->e_posta,
-                'adres' => $doktor->adres,
-                'klinik_adi' => $doktor->klinik_adi ?? null,
-                'profil_resmi' => site_media_url($doktor->profil_resmi),
-                'il' => $doktor->il?->ad,
-                'ilce' => $doktor->ilce?->ad,
-                'branslar' => $doktor->branslar->pluck('ad')->values(),
-                'randevuya_acik_mi' => (bool) $doktor->randevuya_acik_mi,
-                'online_gorusme' => (bool) ($doktor->aktifPaket()?->hasFeature('online_gorusme')),
-                'randevu_periyodu' => $doktor->randevuAyari?->randevu_periyodu ?? 30,
-                'enlem' => $doktor->enlem,
-                'boylam' => $doktor->boylam,
-                'sosyal' => [
-                    'instagram' => $doktor->instagram,
-                    'facebook' => $doktor->facebook,
-                    'youtube' => $doktor->youtube,
-                    'linkedin' => $doktor->linkedin,
-                    'twitter' => $doktor->twitter,
-                    'web_sitesi' => $doktor->web_sitesi,
-                ],
-                'calisma_saatleri' => $calisma,
-                'ortalama_puan' => $doktor->ortalama_puan ?? null,
+        return [
+            'id' => $doktor->id,
+            'ad_soyad' => $doktor->ad_soyad,
+            'unvan' => $doktor->unvan,
+            'uzmanlik_alani' => $doktor->uzmanlik_alani,
+            'biyografi' => $doktor->biyografi,
+            'mezuniyet' => $doktor->mezuniyet ?? [],
+            'telefon' => $doktor->telefon,
+            'e_posta' => $doktor->e_posta,
+            'adres' => $doktor->adres,
+            'klinik_adi' => $doktor->klinik_adi ?? null,
+            'profil_resmi' => site_media_url($doktor->profil_resmi),
+            'il' => $doktor->il?->ad,
+            'ilce' => $doktor->ilce?->ad,
+            'branslar' => $doktor->branslar->pluck('ad')->values(),
+            'randevuya_acik_mi' => (bool) $doktor->randevuya_acik_mi,
+            'online_gorusme' => (bool) ($doktor->aktifPaket()?->hasFeature('online_gorusme')),
+            'randevu_periyodu' => $doktor->randevuAyari?->randevu_periyodu ?? 30,
+            'enlem' => $doktor->enlem,
+            'boylam' => $doktor->boylam,
+            'sosyal' => [
+                'instagram' => $doktor->instagram,
+                'facebook' => $doktor->facebook,
+                'youtube' => $doktor->youtube,
+                'linkedin' => $doktor->linkedin,
+                'twitter' => $doktor->twitter,
+                'web_sitesi' => $doktor->web_sitesi,
             ],
-        ]);
+            'calisma_saatleri' => $calisma,
+            'ortalama_puan' => $doktor->ortalama_puan ?? null,
+        ];
     }
 
     /**
@@ -89,8 +112,14 @@ class PublicDoctorSiteController extends Controller
      */
     public function siteContent(Request $request): JsonResponse
     {
-        $doktor = $this->doktor($request);
+        return response()->json([
+            'success' => true,
+            'data' => $this->siteContentPayload($this->doktor($request)),
+        ]);
+    }
 
+    protected function siteContentPayload(Doktor $doktor): array
+    {
         $bloglar = $doktor->bloglar()
             ->where('aktif_mi', true)
             ->latest()
@@ -148,18 +177,13 @@ class PublicDoctorSiteController extends Controller
                 ];
             });
 
-        $egitimler = $this->mapEgitimler($doktor);
-
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'bloglar' => $bloglar,
-                'faqs' => $faqs,
-                'galeri' => $galeri,
-                'yorumlar' => $yorumlar,
-                'egitimler' => $egitimler,
-            ],
-        ]);
+        return [
+            'bloglar' => $bloglar,
+            'faqs' => $faqs,
+            'galeri' => $galeri,
+            'yorumlar' => $yorumlar,
+            'egitimler' => $this->mapEgitimler($doktor),
+        ];
     }
 
     /**
@@ -167,9 +191,15 @@ class PublicDoctorSiteController extends Controller
      */
     public function services(Request $request): JsonResponse
     {
-        $doktor = $this->doktor($request);
+        return response()->json([
+            'success' => true,
+            'data' => $this->servicesPayload($this->doktor($request)),
+        ]);
+    }
 
-        $hizmetler = $doktor->hizmetler()
+    protected function servicesPayload(Doktor $doktor): array
+    {
+        return $doktor->hizmetler()
             ->where('aktif_mi', true)
             ->orderBy('ad')
             ->get(['id', 'ad', 'aciklama', 'sure', 'fiyat', 'slug', 'resim'])
@@ -183,12 +213,9 @@ class PublicDoctorSiteController extends Controller
                     'slug' => $h->slug,
                     'resim' => site_media_url($h->resim),
                 ];
-            });
-
-        return response()->json([
-            'success' => true,
-            'data' => $hizmetler,
-        ]);
+            })
+            ->values()
+            ->all();
     }
 
     /**
