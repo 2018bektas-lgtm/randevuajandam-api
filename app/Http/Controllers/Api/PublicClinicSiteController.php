@@ -435,6 +435,7 @@ class PublicClinicSiteController extends Controller
                 ? $d->branslar->pluck('ad')->values()
                 : [],
             'randevuya_acik_mi' => (bool) $d->randevuya_acik_mi,
+            'online_gorusme' => (bool) ($d->aktifPaket()?->hasFeature('online_gorusme')),
             'kisa_bio' => Str::limit(strip_tags((string) ($d->biyografi ?? '')), 180),
         ];
 
