@@ -788,6 +788,101 @@ class DoctorPanelApiController extends Controller
         ]);
     }
 
+    public function showHasta(Request $request, int $id): JsonResponse
+    {
+        $doktor = $this->doktor($request);
+        $hasta = Hasta::query()->findOrFail($id);
+
+        $randevular = $doktor->randevular()
+            ->where('hasta_id', $hasta->id)
+            ->with(['hizmet:id,ad,fiyat'])
+            ->latest('tarih')
+            ->latest('saat')
+            ->get();
+
+        $odemeler = $doktor->odemeler()
+            ->where('hasta_id', $hasta->id)
+            ->latest('odeme_tarihi')
+            ->get();
+
+        $toplamOdenen = (float) $odemeler->where('durum', '!=', 'iptal')->sum('odenen_tutar');
+        $toplamTutar = (float) $odemeler->where('durum', '!=', 'iptal')->sum('tutar');
+
+        // Randevu bazlı borç hesabı (ödemesi eksik kalanlar)
+        if ($toplamTutar == 0 && $randevular->isNotEmpty()) {
+            foreach ($randevular as $r) {
+                if (in_array($r->durum, ['onaylandi', 'tamamlandi'])) {
+                    $toplamTutar += (float) ($r->hizmet?->fiyat ?? 0);
+                }
+            }
+        }
+
+        $kalanBakiye = max(0, $toplamTutar - $toplamOdenen);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'id' => $hasta->id,
+                'ad' => $hasta->ad,
+                'soyad' => $hasta->soyad,
+                'telefon' => $hasta->telefon,
+                'e_posta' => $hasta->e_posta,
+                'randevular' => $randevular->map(fn (Randevu $r) => $this->randevuPayload($r)),
+                'finans' => [
+                    'toplam_tutar' => $toplamTutar,
+                    'toplam_odenen' => $toplamOdenen,
+                    'kalan_bakiye' => $kalanBakiye,
+                    'odemeler' => $odemeler->map(fn ($o) => [
+                        'id' => $o->id,
+                        'tutar' => (float) $o->tutar,
+                        'odenen_tutar' => (float) $o->odenen_tutar,
+                        'odeme_yontemi' => $o->odeme_yontemi,
+                        'durum' => $o->durum,
+                        'odeme_tarihi' => $o->odeme_tarihi,
+                        'aciklama' => $o->aciklama,
+                    ]),
+                ],
+            ],
+        ]);
+    }
+
+    public function updateHasta(Request $request, int $id): JsonResponse
+    {
+        $hasta = Hasta::query()->findOrFail($id);
+        $v = $request->validate([
+            'ad' => ['sometimes', 'string', 'max:255'],
+            'soyad' => ['sometimes', 'string', 'max:255'],
+            'telefon' => ['nullable', 'string', 'max:40'],
+            'e_posta' => ['nullable', 'email', 'max:255'],
+        ]);
+
+        $hasta->update($v);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Danışan bilgileri güncellendi.',
+            'data' => [
+                'id' => $hasta->id,
+                'ad' => $hasta->ad,
+                'soyad' => $hasta->soyad,
+                'telefon' => $hasta->telefon,
+                'e_posta' => $hasta->e_posta,
+            ],
+        ]);
+    }
+
+    public function destroyHasta(Request $request, int $id): JsonResponse
+    {
+        $doktor = $this->doktor($request);
+        $hasta = Hasta::query()->findOrFail($id);
+        $doktor->randevular()->where('hasta_id', $hasta->id)->update(['hasta_id' => null]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Danışan kaydı listeden kaldırıldı.',
+        ]);
+    }
+
     public function leaves(Request $request): JsonResponse
     {
         $doktor = $this->doktor($request);

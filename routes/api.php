@@ -92,7 +92,10 @@ $registerDoctorPanelRoutes = function (): void {
 
     Route::get('/hastalar/ara', [DoctorPanelApiController::class, 'searchHastalar']);
     Route::get('/hastalar', [DoctorPanelApiController::class, 'patients']);
+    Route::get('/hastalar/{id}', [DoctorPanelApiController::class, 'showHasta']);
     Route::post('/hastalar', [DoctorPanelApiController::class, 'storeHasta']);
+    Route::put('/hastalar/{id}', [DoctorPanelApiController::class, 'updateHasta']);
+    Route::delete('/hastalar/{id}', [DoctorPanelApiController::class, 'destroyHasta']);
 
     Route::get('/izinler', [DoctorPanelApiController::class, 'leaves']);
     Route::post('/izinler', [DoctorPanelApiController::class, 'storeLeave']);
