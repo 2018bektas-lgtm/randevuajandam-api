@@ -189,6 +189,9 @@ $registerDoctorPanelRoutes = function (): void {
         Route::post('/hasta/{hastaId}/borc', [DoctorFinansApiController::class, 'hastaBorcEkle'])->whereNumber('hastaId');
         Route::get('/rapor', [DoctorFinansApiController::class, 'rapor']);
     });
+
+    // Alias for English mobile API paths
+    Route::post('/finance/income', [DoctorFinansApiController::class, 'storeGelir']);
 };
 
 // Doctor panel (bireysel site key + bearer)
