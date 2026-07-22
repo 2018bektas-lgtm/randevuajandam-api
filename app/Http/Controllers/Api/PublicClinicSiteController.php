@@ -59,6 +59,10 @@ class PublicClinicSiteController extends Controller
                 'meta_baslik' => $klinik->meta_baslik,
                 'meta_aciklama' => $klinik->meta_aciklama,
                 'hekim_sayisi' => $klinik->doktorlar()->where('aktif_mi', true)->count(),
+                'max_doktor_sayisi' => $klinik->efektifDoktorLimiti(),
+                'dahil_doktor_limiti' => $klinik->dahilDoktorLimiti(),
+                'ek_doktor_koltuk_sayisi' => (int) $klinik->ek_doktor_koltuk_sayisi,
+                'doktor_limiti_doldu_mu' => $klinik->doktorLimitiDolduMu(),
             ],
         ]);
     }
