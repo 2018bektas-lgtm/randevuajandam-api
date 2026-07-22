@@ -37,8 +37,19 @@ class DoctorPanelApiController extends Controller
     public function dashboard(Request $request): JsonResponse
     {
         $doktor = $this->doktor($request);
-
         $bugun = now()->toDateString();
+
+        $statsRaw = DB::table('randevular')
+            ->where('doktor_id', $doktor->id)
+            ->whereNull('deleted_at')
+            ->selectRaw("
+                COUNT(*) as toplam_randevu,
+                COUNT(DISTINCT hasta_id) as kayitli_hasta,
+                COUNT(CASE WHEN durum = 'beklemede' THEN 1 END) as bekleyen_talep,
+                COUNT(CASE WHEN tarih = ? AND durum IN ('beklemede', 'onaylandi') THEN 1 END) as bugun_randevu
+            ", [$bugun])
+            ->first();
+
         $randevularBugun = $doktor->randevular()
             ->whereDate('tarih', $bugun)
             ->whereIn('durum', ['beklemede', 'onaylandi', 'tamamlandi'])
@@ -55,10 +66,10 @@ class DoctorPanelApiController extends Controller
                     'unvan' => $doktor->unvan,
                 ],
                 'stats' => [
-                    'toplam_randevu' => $doktor->randevular()->count(),
-                    'kayitli_hasta' => $doktor->randevular()->distinct('hasta_id')->count('hasta_id'),
-                    'bekleyen_talep' => $doktor->randevular()->where('durum', 'beklemede')->count(),
-                    'bugun_randevu' => $doktor->randevular()->whereDate('tarih', $bugun)->whereIn('durum', ['beklemede', 'onaylandi'])->count(),
+                    'toplam_randevu' => (int) ($statsRaw->toplam_randevu ?? 0),
+                    'kayitli_hasta' => (int) ($statsRaw->kayitli_hasta ?? 0),
+                    'bekleyen_talep' => (int) ($statsRaw->bekleyen_talep ?? 0),
+                    'bugun_randevu' => (int) ($statsRaw->bugun_randevu ?? 0),
                     'randevuya_acik_mi' => (bool) $doktor->randevuya_acik_mi,
                     'aktif_hizmet' => $doktor->hizmetler()->where('aktif_mi', true)->count(),
                 ],
