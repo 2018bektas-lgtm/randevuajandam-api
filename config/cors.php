@@ -34,7 +34,7 @@ return [
 
     'allowed_origins_patterns' => [],
 
-    'allowed_headers' => ['Content-Type', 'Authorization', 'X-Api-Key', 'X-Api-Secret', 'X-Secret-Key', 'Accept', 'X-Requested-With'],
+    'allowed_headers' => ['Content-Type', 'Authorization', 'X-Api-Key', 'X-Api-Secret', 'X-Secret-Key', 'X-Doktor-Token', 'X-Personel-Token', 'Accept', 'X-Requested-With'],
 
     'exposed_headers' => [],
 

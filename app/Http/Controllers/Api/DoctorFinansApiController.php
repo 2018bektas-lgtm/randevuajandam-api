@@ -281,6 +281,15 @@ class DoctorFinansApiController extends Controller
         ], 201);
     }
 
+    public function showGelir(Request $request, int $id): JsonResponse
+    {
+        $odeme = $this->doktor($request)->odemeler()
+            ->with(['finansKategori', 'hasta', 'hizmet', 'kalemler'])
+            ->findOrFail($id);
+
+        return response()->json(['success' => true, 'data' => $odeme]);
+    }
+
     public function updateGelir(Request $request, int $id): JsonResponse
     {
         $odeme = $this->doktor($request)->odemeler()->findOrFail($id);

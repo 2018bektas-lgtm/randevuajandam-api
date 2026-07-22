@@ -23,10 +23,15 @@ class DoctorAuthApiController extends Controller
     public function login(Request $request): JsonResponse
     {
         $siteDoktor = $request->attributes->get('doktor');
+
+        // Mobile API: no site key binding — any active doctor can log in
         if (! $siteDoktor) {
-            return response()->json(['success' => false, 'message' => 'Site API anahtarı gerekli.'], 401);
+            return $this->attemptLogin($request, function (Doktor $doktor): ?string {
+                return null; // no site-ownership restriction
+            }, 'doctor-mobile-app');
         }
 
+        // Web panel: only the site-owner doctor may log in
         return $this->attemptLogin($request, function (Doktor $doktor) use ($siteDoktor): ?string {
             if ((int) $doktor->id !== (int) $siteDoktor->id) {
                 return 'Bu web sitesi yönetim paneline yalnızca site sahibi hekim giriş yapabilir.';

@@ -163,38 +163,73 @@ $registerDoctorPanelRoutes = function (): void {
             ->whereNumber('id')->whereNumber('basvuruId');
     });
 
-    Route::middleware('doctor.paket:finans')->prefix('finans')->group(function () {
-        Route::get('/ozet', [DoctorFinansApiController::class, 'ozet']);
-        Route::get('/kategoriler', [DoctorFinansApiController::class, 'kategoriler']);
-        Route::post('/kategoriler', [DoctorFinansApiController::class, 'storeKategori']);
-        Route::put('/kategoriler/{id}', [DoctorFinansApiController::class, 'updateKategori']);
-        Route::post('/kategoriler/{id}', [DoctorFinansApiController::class, 'updateKategori']);
-        Route::post('/kategoriler/{id}/toggle', [DoctorFinansApiController::class, 'toggleKategori']);
-        Route::delete('/kategoriler/{id}', [DoctorFinansApiController::class, 'destroyKategori']);
-        Route::get('/gelirler', [DoctorFinansApiController::class, 'gelirler']);
-        Route::post('/gelirler', [DoctorFinansApiController::class, 'storeGelir']);
-        Route::put('/gelirler/{id}', [DoctorFinansApiController::class, 'updateGelir']);
-        Route::post('/gelirler/{id}/guncelle', [DoctorFinansApiController::class, 'updateGelir']);
-        Route::post('/gelirler/{id}/kalem', [DoctorFinansApiController::class, 'storeGelirKalem']);
-        Route::delete('/gelirler/{odemeId}/kalem/{kalemId}', [DoctorFinansApiController::class, 'destroyGelirKalem']);
-        Route::delete('/gelirler/{id}', [DoctorFinansApiController::class, 'destroyGelir']);
-        Route::get('/giderler', [DoctorFinansApiController::class, 'giderler']);
-        Route::post('/giderler', [DoctorFinansApiController::class, 'storeGider']);
-        Route::put('/giderler/{id}', [DoctorFinansApiController::class, 'updateGider']);
-        Route::post('/giderler/{id}/guncelle', [DoctorFinansApiController::class, 'updateGider']);
-        Route::delete('/giderler/{id}', [DoctorFinansApiController::class, 'destroyGider']);
-        Route::get('/hasta-bakiyeleri', [DoctorFinansApiController::class, 'hastaBakiyeleri']);
-        Route::get('/hasta/{hastaId}', [DoctorFinansApiController::class, 'hastaHesap'])->whereNumber('hastaId');
-        Route::post('/hasta/{hastaId}/tahsilat', [DoctorFinansApiController::class, 'hastaTahsilat'])->whereNumber('hastaId');
-        Route::post('/hasta/{hastaId}/borc', [DoctorFinansApiController::class, 'hastaBorcEkle'])->whereNumber('hastaId');
-        Route::get('/rapor', [DoctorFinansApiController::class, 'rapor']);
-    });
+    Route::middleware('doctor.paket:finans')->group(function () {
+        Route::prefix('finans')->group(function () {
+            Route::get('/ozet', [DoctorFinansApiController::class, 'ozet']);
+            Route::get('/kategoriler', [DoctorFinansApiController::class, 'kategoriler']);
+            Route::post('/kategoriler', [DoctorFinansApiController::class, 'storeKategori']);
+            Route::put('/kategoriler/{id}', [DoctorFinansApiController::class, 'updateKategori']);
+            Route::post('/kategoriler/{id}', [DoctorFinansApiController::class, 'updateKategori']);
+            Route::post('/kategoriler/{id}/toggle', [DoctorFinansApiController::class, 'toggleKategori']);
+            Route::delete('/kategoriler/{id}', [DoctorFinansApiController::class, 'destroyKategori']);
+            Route::get('/gelirler', [DoctorFinansApiController::class, 'gelirler']);
+            Route::post('/gelirler', [DoctorFinansApiController::class, 'storeGelir']);
+            Route::put('/gelirler/{id}', [DoctorFinansApiController::class, 'updateGelir']);
+            Route::post('/gelirler/{id}/guncelle', [DoctorFinansApiController::class, 'updateGelir']);
+            Route::post('/gelirler/{id}/kalem', [DoctorFinansApiController::class, 'storeGelirKalem']);
+            Route::delete('/gelirler/{odemeId}/kalem/{kalemId}', [DoctorFinansApiController::class, 'destroyGelirKalem']);
+            Route::delete('/gelirler/{id}', [DoctorFinansApiController::class, 'destroyGelir']);
+            Route::get('/giderler', [DoctorFinansApiController::class, 'giderler']);
+            Route::post('/giderler', [DoctorFinansApiController::class, 'storeGider']);
+            Route::put('/giderler/{id}', [DoctorFinansApiController::class, 'updateGider']);
+            Route::post('/giderler/{id}/guncelle', [DoctorFinansApiController::class, 'updateGider']);
+            Route::delete('/giderler/{id}', [DoctorFinansApiController::class, 'destroyGider']);
+            Route::get('/hasta-bakiyeleri', [DoctorFinansApiController::class, 'hastaBakiyeleri']);
+            Route::get('/hasta/{hastaId}', [DoctorFinansApiController::class, 'hastaHesap'])->whereNumber('hastaId');
+            Route::post('/hasta/{hastaId}/tahsilat', [DoctorFinansApiController::class, 'hastaTahsilat'])->whereNumber('hastaId');
+            Route::post('/hasta/{hastaId}/borc', [DoctorFinansApiController::class, 'hastaBorcEkle'])->whereNumber('hastaId');
+            Route::get('/rapor', [DoctorFinansApiController::class, 'rapor']);
+        });
 
-    // Alias for English mobile API paths
-    Route::post('/finance/income', [DoctorFinansApiController::class, 'storeGelir']);
+        // Aliases for English/Mobile API paths
+        Route::prefix('finance')->group(function () {
+            Route::get('/overview', [DoctorFinansApiController::class, 'ozet']);
+            Route::get('/report', [DoctorFinansApiController::class, 'rapor']);
+
+            Route::get('/categories', [DoctorFinansApiController::class, 'kategoriler']);
+            Route::post('/categories', [DoctorFinansApiController::class, 'storeKategori']);
+            Route::put('/categories/{id}', [DoctorFinansApiController::class, 'updateKategori']);
+            Route::post('/categories/{id}', [DoctorFinansApiController::class, 'updateKategori']);
+            Route::post('/categories/{id}/toggle', [DoctorFinansApiController::class, 'toggleKategori']);
+            Route::delete('/categories/{id}', [DoctorFinansApiController::class, 'destroyKategori']);
+
+            Route::get('/incomes', [DoctorFinansApiController::class, 'gelirler']);
+            Route::post('/incomes', [DoctorFinansApiController::class, 'storeGelir']);
+            Route::post('/income', [DoctorFinansApiController::class, 'storeGelir']);
+            Route::get('/incomes/{id}', [DoctorFinansApiController::class, 'showGelir'])->whereNumber('id');
+            Route::put('/incomes/{id}', [DoctorFinansApiController::class, 'updateGelir'])->whereNumber('id');
+            Route::post('/incomes/{id}/guncelle', [DoctorFinansApiController::class, 'updateGelir'])->whereNumber('id');
+            Route::post('/incomes/{id}/items', [DoctorFinansApiController::class, 'storeGelirKalem'])->whereNumber('id');
+            Route::delete('/incomes/{odemeId}/items/{kalemId}', [DoctorFinansApiController::class, 'destroyGelirKalem'])
+                ->whereNumber('odemeId')->whereNumber('kalemId');
+            Route::delete('/incomes/{id}', [DoctorFinansApiController::class, 'destroyGelir'])->whereNumber('id');
+
+            Route::get('/expenses', [DoctorFinansApiController::class, 'giderler']);
+            Route::post('/expenses', [DoctorFinansApiController::class, 'storeGider']);
+            Route::put('/expenses/{id}', [DoctorFinansApiController::class, 'updateGider'])->whereNumber('id');
+            Route::post('/expenses/{id}/guncelle', [DoctorFinansApiController::class, 'updateGider'])->whereNumber('id');
+            Route::delete('/expenses/{id}', [DoctorFinansApiController::class, 'destroyGider'])->whereNumber('id');
+
+            Route::get('/balances', [DoctorFinansApiController::class, 'hastaBakiyeleri']);
+            Route::get('/patients/{hastaId}', [DoctorFinansApiController::class, 'hastaHesap'])->whereNumber('hastaId');
+            Route::post('/patients/{hastaId}/collect', [DoctorFinansApiController::class, 'hastaTahsilat'])->whereNumber('hastaId');
+            Route::post('/patients/{hastaId}/debt', [DoctorFinansApiController::class, 'hastaBorcEkle'])->whereNumber('hastaId');
+        });
+        Route::post('/finans/income', [DoctorFinansApiController::class, 'storeGelir']);
+    });
 };
 
-// Doctor panel (bireysel site key + bearer)
+// Doctor panel — web (bireysel site key + bearer)
 Route::prefix('v1/doctor')
     ->middleware(['doctor.site.key', 'throttle:60,1'])
     ->group(function () use ($registerDoctorPanelRoutes) {
@@ -216,11 +251,11 @@ Route::prefix('v1/doctor')
         });
     });
 
-// Clinic doctor panel (klinik site key + bearer — kliniğe bağlı hekimler)
-Route::prefix('v1/clinic/doctor')
-    ->middleware(['clinic.site.key', 'throttle:60,1'])
+// Doctor panel — mobile (bearer only, no site key required)
+Route::prefix('mobile/v1/doctor')
+    ->middleware(['throttle:60,1'])
     ->group(function () use ($registerDoctorPanelRoutes) {
-        Route::post('/auth/login', [DoctorAuthApiController::class, 'clinicLogin'])->middleware('throttle:12,1');
+        Route::post('/auth/login', [DoctorAuthApiController::class, 'login'])->middleware('throttle:12,1');
         Route::post('/auth/two-factor', [DoctorAuthApiController::class, 'verifyTwoFactor'])->middleware('throttle:12,1');
 
         Route::middleware('doctor.api.token')->group(function () use ($registerDoctorPanelRoutes) {
@@ -231,6 +266,28 @@ Route::prefix('v1/clinic/doctor')
             Route::post('/two-factor/confirm', [DoctorAuthApiController::class, 'twoFactorConfirmSetup']);
             Route::post('/two-factor/disable', [DoctorAuthApiController::class, 'twoFactorDisable']);
             Route::post('/two-factor/recovery', [DoctorAuthApiController::class, 'twoFactorRegenerateRecovery']);
+
             Route::get('/randevular/{id}/gorusme', [DoctorPanelApiController::class, 'meetingSession'])->whereNumber('id');
         });
     });
+
+// Clinic doctor panel (klinik site key + bearer — kliniğe bağlı hekimler)
+foreach (['v1/clinic/doctor', 'mobile/v1/clinic/doctor'] as $clinicDoctorPrefix) {
+    Route::prefix($clinicDoctorPrefix)
+        ->middleware(['clinic.site.key', 'throttle:60,1'])
+        ->group(function () use ($registerDoctorPanelRoutes) {
+            Route::post('/auth/login', [DoctorAuthApiController::class, 'clinicLogin'])->middleware('throttle:12,1');
+            Route::post('/auth/two-factor', [DoctorAuthApiController::class, 'verifyTwoFactor'])->middleware('throttle:12,1');
+
+            Route::middleware('doctor.api.token')->group(function () use ($registerDoctorPanelRoutes) {
+                $registerDoctorPanelRoutes();
+
+                Route::get('/two-factor', [DoctorAuthApiController::class, 'twoFactorStatus']);
+                Route::post('/two-factor/setup', [DoctorAuthApiController::class, 'twoFactorBeginSetup']);
+                Route::post('/two-factor/confirm', [DoctorAuthApiController::class, 'twoFactorConfirmSetup']);
+                Route::post('/two-factor/disable', [DoctorAuthApiController::class, 'twoFactorDisable']);
+                Route::post('/two-factor/recovery', [DoctorAuthApiController::class, 'twoFactorRegenerateRecovery']);
+                Route::get('/randevular/{id}/gorusme', [DoctorPanelApiController::class, 'meetingSession'])->whereNumber('id');
+            });
+        });
+}
