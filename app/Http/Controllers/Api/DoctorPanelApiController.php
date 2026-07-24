@@ -191,6 +191,8 @@ class DoctorPanelApiController extends Controller
             'email_bildirimleri' => ['sometimes', 'boolean'],
             'sms_bildirimleri' => ['sometimes', 'boolean'],
             'aktif_mi' => ['sometimes', 'boolean'],
+            'online_randevu_aktif' => ['sometimes', 'boolean'],
+            'yuzyuze_randevu_aktif' => ['sometimes', 'boolean'],
         ]);
 
         $ayar = RandevuAyari::updateOrCreate(
@@ -206,6 +208,8 @@ class DoctorPanelApiController extends Controller
                 'email_bildirimleri' => true,
                 'sms_bildirimleri' => true,
                 'aktif_mi' => true,
+                'online_randevu_aktif' => true,
+                'yuzyuze_randevu_aktif' => true,
             ], $validated)
         );
 
