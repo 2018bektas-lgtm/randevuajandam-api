@@ -16,11 +16,11 @@ class AppServiceProvider extends ServiceProvider
     {
         // NOTE: Do NOT remap usePublicPath to site/public —
         // that breaks `php artisan serve` (loads site's index.php).
-        // Shared uploads path is available via shared_public_path() helper binding.
-        $shared = env('SHARED_PUBLIC_PATH');
+        // Use config() — bare env() is null after config:cache.
+        $shared = config('media.shared_public_path') ?: env('SHARED_PUBLIC_PATH');
         $this->app->instance(
             'shared_public_path',
-            ($shared && is_dir($shared))
+            (is_string($shared) && $shared !== '' && is_dir($shared))
                 ? rtrim(str_replace('\\', '/', $shared), '/')
                 : public_path()
         );

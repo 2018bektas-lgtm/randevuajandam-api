@@ -41,12 +41,16 @@ if (! function_exists('site_media_url')) {
 if (! function_exists('media_public_base')) {
     function media_public_base(): string
     {
-        $explicit = env('MEDIA_URL') ?: env('SITE_URL');
+        // Prefer config (works with config:cache). env() alone is null after cache.
+        $explicit = config('media.url')
+            ?: env('MEDIA_URL')
+            ?: env('SITE_URL')
+            ?: config('app.url');
+
         if (is_string($explicit) && $explicit !== '') {
             return rtrim($explicit, '/');
         }
 
-        // Default: site / API base
         return rtrim((string) env('APP_URL', 'http://127.0.0.1:8000'), '/');
     }
 }
