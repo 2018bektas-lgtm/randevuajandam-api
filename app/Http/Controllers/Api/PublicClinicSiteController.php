@@ -31,12 +31,14 @@ class PublicClinicSiteController extends Controller
 
     public function profile(Request $request): JsonResponse
     {
-        $klinik = $this->klinik($request)->load(['il', 'ilce', 'paket']);
+        $klinik = $this->klinik($request)->load(['il', 'ilce', 'paket.sistemOzellikleri']);
 
         $saatler = $klinik->calisma_saatleri;
         if (! is_array($saatler)) {
             $saatler = [];
         }
+
+        $features = $this->clinicFeatures($klinik);
 
         return response()->json([
             'success' => true,
@@ -63,6 +65,8 @@ class PublicClinicSiteController extends Controller
                 'dahil_doktor_limiti' => $klinik->dahilDoktorLimiti(),
                 'ek_doktor_koltuk_sayisi' => (int) $klinik->ek_doktor_koltuk_sayisi,
                 'doktor_limiti_doldu_mu' => $klinik->doktorLimitiDolduMu(),
+                'features' => $features,
+                'paket_ozellikleri' => $features,
             ],
         ]);
     }
@@ -139,9 +143,23 @@ class PublicClinicSiteController extends Controller
         $klinik = $this->klinik($request);
         $doktorIds = $klinik->doktorlar()->where('aktif_mi', true)->pluck('id');
 
-        // Aggregate content from clinic doctors (MVP)
-        $bloglar = \App\Models\Blog::query()
-            ->whereIn('doktor_id', $doktorIds)
+        // Paket özelliğine göre hekim filtreleri
+        $doktorlar = $klinik->doktorlar()->where('aktif_mi', true)->with('paket.sistemOzellikleri')->get();
+        $idsWith = function (string $feature) use ($doktorlar) {
+            return $doktorlar->filter(function ($d) use ($feature) {
+                $p = method_exists($d, 'aktifPaket') ? $d->aktifPaket() : $d->paket;
+
+                return $p && $p->hasFeature($feature);
+            })->pluck('id');
+        };
+
+        $blogIds = $idsWith('blog');
+        $faqIds = $idsWith('faq');
+        $galeriIds = $idsWith('galeri');
+        $yorumIds = $idsWith('yorum_gorunur');
+
+        $bloglar = $blogIds->isEmpty() ? collect() : \App\Models\Blog::query()
+            ->whereIn('doktor_id', $blogIds)
             ->where('aktif_mi', true)
             ->latest()
             ->limit(30)
@@ -157,15 +175,15 @@ class PublicClinicSiteController extends Controller
                 'doktor_id' => $b->doktor_id,
             ]);
 
-        $faqs = \App\Models\Faq::query()
-            ->whereIn('doktor_id', $doktorIds)
+        $faqs = $faqIds->isEmpty() ? collect() : \App\Models\Faq::query()
+            ->whereIn('doktor_id', $faqIds)
             ->where('aktif', true)
             ->orderBy('sira')
             ->limit(50)
             ->get(['id', 'soru', 'cevap', 'sira', 'doktor_id']);
 
-        $galeri = \App\Models\DoktorGaleri::query()
-            ->whereIn('doktor_id', $doktorIds)
+        $galeri = $galeriIds->isEmpty() ? collect() : \App\Models\DoktorGaleri::query()
+            ->whereIn('doktor_id', $galeriIds)
             ->orderBy('sira')
             ->limit(40)
             ->get()
@@ -176,8 +194,8 @@ class PublicClinicSiteController extends Controller
                 'sira' => $g->sira,
             ]);
 
-        $yorumlar = \App\Models\Yorum::query()
-            ->whereIn('doktor_id', $doktorIds)
+        $yorumlar = $yorumIds->isEmpty() ? collect() : \App\Models\Yorum::query()
+            ->whereIn('doktor_id', $yorumIds)
             ->where('onay_durumu', 'onaylandi')
             ->with('hasta:id,ad,soyad')
             ->latest()
@@ -194,6 +212,8 @@ class PublicClinicSiteController extends Controller
                 ];
             });
 
+        $features = $this->clinicFeatures($klinik->loadMissing('paket.sistemOzellikleri'));
+
         return response()->json([
             'success' => true,
             'data' => [
@@ -201,8 +221,47 @@ class PublicClinicSiteController extends Controller
                 'faqs' => $faqs,
                 'galeri' => $galeri,
                 'yorumlar' => $yorumlar,
+                'features' => $features,
+                'paket_ozellikleri' => $features,
             ],
         ]);
+    }
+
+    /**
+     * Klinik vitrin özellikleri: klinik paket + aktif hekim paketlerinin birleşimi.
+     *
+     * @return list<string>
+     */
+    protected function clinicFeatures(Klinik $klinik): array
+    {
+        $codes = collect();
+
+        $klinikPaket = $klinik->paket;
+        if ($klinikPaket && method_exists($klinikPaket, 'sistemOzellikleri')) {
+            if (! $klinikPaket->relationLoaded('sistemOzellikleri')) {
+                $klinikPaket->load('sistemOzellikleri:id,kod');
+            }
+            $codes = $codes->merge($klinikPaket->sistemOzellikleri->pluck('kod'));
+        }
+
+        $doktorlar = $klinik->relationLoaded('doktorlar')
+            ? $klinik->doktorlar
+            : $klinik->doktorlar()->where('aktif_mi', true)->with('paket.sistemOzellikleri')->get();
+
+        foreach ($doktorlar as $d) {
+            $p = method_exists($d, 'aktifPaket') ? $d->aktifPaket() : $d->paket;
+            if (! $p) {
+                continue;
+            }
+            if (method_exists($p, 'sistemOzellikleri')) {
+                if (! $p->relationLoaded('sistemOzellikleri')) {
+                    $p->load('sistemOzellikleri:id,kod');
+                }
+                $codes = $codes->merge($p->sistemOzellikleri->pluck('kod'));
+            }
+        }
+
+        return $codes->filter()->unique()->values()->map(fn ($c) => (string) $c)->all();
     }
 
     public function slots(Request $request, SlotService $slotService): JsonResponse

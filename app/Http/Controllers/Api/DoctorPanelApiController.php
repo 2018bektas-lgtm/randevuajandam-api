@@ -58,12 +58,27 @@ class DoctorPanelApiController extends Controller
             ->get()
             ->map(fn (Randevu $r) => $this->randevuPayload($r));
 
+        $paket = method_exists($doktor, 'aktifPaket') ? $doktor->aktifPaket() : $doktor->paket;
+        $features = [];
+        if ($paket && method_exists($paket, 'sistemOzellikleri')) {
+            if (! $paket->relationLoaded('sistemOzellikleri')) {
+                $paket->load('sistemOzellikleri:id,kod');
+            }
+            $features = $paket->sistemOzellikleri->pluck('kod')->filter()->values()->all();
+        }
+
         return response()->json([
             'success' => true,
             'data' => [
                 'doktor' => [
                     'ad_soyad' => $doktor->ad_soyad,
                     'unvan' => $doktor->unvan,
+                    'features' => $features,
+                    'paket_ozellikleri' => $features,
+                    'paket' => $paket ? [
+                        'id' => $paket->id,
+                        'ad' => $paket->ad ?? null,
+                    ] : null,
                 ],
                 'stats' => [
                     'toplam_randevu' => (int) ($statsRaw->toplam_randevu ?? 0),
@@ -125,6 +140,14 @@ class DoctorPanelApiController extends Controller
             if ($rel) {
                 $this->deleteSharedUpload($doktor->profil_resmi);
                 $validated['profil_resmi'] = $rel;
+            }
+        }
+
+        // dis_baglanti paketi yoksa sosyal alanları kaydetme
+        $paket = $doktor->aktifPaket();
+        if (! $paket || ! $paket->hasFeature('dis_baglanti')) {
+            foreach (['instagram', 'facebook', 'twitter', 'linkedin', 'youtube', 'web_sitesi'] as $s) {
+                unset($validated[$s]);
             }
         }
 
@@ -193,7 +216,18 @@ class DoctorPanelApiController extends Controller
             'aktif_mi' => ['sometimes', 'boolean'],
             'online_randevu_aktif' => ['sometimes', 'boolean'],
             'yuzyuze_randevu_aktif' => ['sometimes', 'boolean'],
+            'sms_gonderici_baslik' => ['nullable', 'string', 'max:11'],
         ]);
+
+        $paket = $doktor->aktifPaket();
+        if (! $paket || ! $paket->hasFeature('email_bildirim')) {
+            $validated['email_bildirimleri'] = false;
+        }
+        if (! $paket || ! $paket->hasFeature('sms_hatirlatma')) {
+            $validated['sms_bildirimleri'] = false;
+        }
+        $smsBaslik = $validated['sms_gonderici_baslik'] ?? null;
+        unset($validated['sms_gonderici_baslik']);
 
         $ayar = RandevuAyari::updateOrCreate(
             ['doktor_id' => $doktor->id],
@@ -212,6 +246,13 @@ class DoctorPanelApiController extends Controller
                 'yuzyuze_randevu_aktif' => true,
             ], $validated)
         );
+
+        if ($paket && $paket->hasFeature('sms_baslik') && filled($smsBaslik)
+            && \Illuminate\Support\Facades\Schema::hasColumn('doktorlar', 'sms_gonderici_baslik')
+        ) {
+            $baslik = mb_strtoupper(preg_replace('/[^A-Za-z0-9 ]/', '', (string) $smsBaslik) ?? '');
+            $doktor->update(['sms_gonderici_baslik' => mb_substr(trim($baslik), 0, 11) ?: null]);
+        }
 
         return response()->json([
             'success' => true,
@@ -460,9 +501,28 @@ class DoctorPanelApiController extends Controller
         $randevu = $doktor->randevular()->findOrFail($id);
 
         $validated = $request->validate([
-            'durum' => ['required', 'in:beklemede,onaylandi,tamamlandi,iptal'],
+            'durum' => ['required', 'in:beklemede,onaylandi,tamamlandi,iptal,gelmedi'],
             'hekim_notu' => ['nullable', 'string', 'max:2000'],
         ]);
+
+        $paket = $doktor->aktifPaket();
+        $yonetim = in_array($validated['durum'], ['onaylandi', 'iptal'], true) && $randevu->durum === 'beklemede';
+        if ($yonetim && (! $paket || ! $paket->hasFeature('randevu_talepleri'))) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Randevu taleplerini onaylamak/reddetmek için paket yükseltin.',
+                'feature' => 'randevu_talepleri',
+            ], 403);
+        }
+        if (array_key_exists('hekim_notu', $validated) && filled($validated['hekim_notu'])
+            && (! $paket || ! $paket->hasFeature('hasta_not_dosya'))
+        ) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Hasta notu paketinizde yok.',
+                'feature' => 'hasta_not_dosya',
+            ], 403);
+        }
 
         $eski = $randevu->durum;
         $data = ['durum' => $validated['durum']];
@@ -473,6 +533,25 @@ class DoctorPanelApiController extends Controller
 
         if ($eski !== $validated['durum']) {
             RandevuDurumuDegisti::dispatch($randevu, $eski, $validated['durum']);
+        }
+
+        if ($validated['durum'] === 'gelmedi' && $eski !== 'gelmedi' && $paket?->hasFeature('no_show_mesaj')) {
+            try {
+                $hasta = $randevu->hasta;
+                if ($hasta && ! empty($hasta->telefon)) {
+                    $kontor = app(\App\Services\SmsKontorService::class);
+                    if ($kontor->doktorGonderebilir($doktor)) {
+                        $ad = $hasta->ad_soyad ?? trim(($hasta->ad ?? '').' '.($hasta->soyad ?? '')) ?: 'Hasta';
+                        $msg = "Sayin {$ad}, randevunuza ulasilamadi. Yeni slot icin hekim profilinden randevu alabilirsiniz. ".config('app.url');
+                        $header = method_exists($doktor, 'resolveSmsHeader') ? $doktor->resolveSmsHeader() : null;
+                        if (app(\App\Services\SmsService::class)->send($hasta->telefon, $msg, $header)) {
+                            $kontor->tuket($doktor, 1);
+                        }
+                    }
+                }
+            } catch (\Throwable) {
+                // ignore
+            }
         }
 
         return response()->json([
@@ -534,32 +613,58 @@ class DoctorPanelApiController extends Controller
             'aciklama' => ['nullable', 'string', 'max:1000'],
             'not' => ['nullable', 'string', 'max:1000'],
             'gorusme_tipi' => ['nullable', 'in:yuz_yuze,online'],
+            'seri' => ['nullable', 'boolean'],
+            'seri_adet' => ['nullable', 'integer', 'min:2', 'max:52'],
+            'seri_aralik_gun' => ['nullable', 'integer', 'min:1', 'max:90'],
         ]);
+
+        $paket = $doktor->aktifPaket();
+        $not = $validated['aciklama'] ?? $validated['not'] ?? null;
+        if (filled($not) && (! $paket || ! $paket->hasFeature('hasta_not_dosya'))) {
+            return response()->json(['success' => false, 'message' => 'Randevu notu paketinizde yok.', 'feature' => 'hasta_not_dosya'], 403);
+        }
+        if (($validated['gorusme_tipi'] ?? '') === 'online' && (! $paket || ! $paket->hasFeature('online_gorusme'))) {
+            return response()->json(['success' => false, 'message' => 'Online görüşme paketinizde yok.', 'feature' => 'online_gorusme'], 403);
+        }
+        $seri = (bool) ($validated['seri'] ?? false) || (int) ($validated['seri_adet'] ?? 0) > 1;
+        if ($seri && (! $paket || ! $paket->hasFeature('seri_randevu'))) {
+            return response()->json(['success' => false, 'message' => 'Seri randevu paketinizde yok.', 'feature' => 'seri_randevu'], 403);
+        }
 
         $hasta = Hasta::find($validated['danisan_id']);
         if (! $hasta) {
             return response()->json(['success' => false, 'message' => 'Danışan bulunamadı.'], 422);
         }
 
+        $adet = $seri ? max(2, min(52, (int) ($validated['seri_adet'] ?? 2))) : 1;
+        $aralik = max(1, min(90, (int) ($validated['seri_aralik_gun'] ?? 7)));
+        $baslangic = Carbon::parse($validated['tarih']);
+        $last = null;
+        $created = 0;
+
         try {
-            $randevu = $bookingService->create([
-                'doktor' => $doktor,
-                'hasta' => $hasta,
-                'hizmet_id' => (int) $validated['hizmet_id'],
-                'tarih' => Carbon::parse($validated['tarih'])->toDateString(),
-                'saat' => $validated['saat'],
-                'not' => $validated['aciklama'] ?? $validated['not'] ?? null,
-                'durum' => 'onaylandi',
-                'gorusme_tipi' => ($validated['gorusme_tipi'] ?? 'yuz_yuze') === 'online' ? 'online' : 'yuz_yuze',
-            ]);
+            for ($i = 0; $i < $adet; $i++) {
+                $last = $bookingService->create([
+                    'doktor' => $doktor,
+                    'hasta' => $hasta,
+                    'hizmet_id' => (int) $validated['hizmet_id'],
+                    'tarih' => $baslangic->copy()->addDays($i * $aralik)->toDateString(),
+                    'saat' => $validated['saat'],
+                    'not' => $not,
+                    'durum' => 'onaylandi',
+                    'gorusme_tipi' => ($validated['gorusme_tipi'] ?? 'yuz_yuze') === 'online' ? 'online' : 'yuz_yuze',
+                ]);
+                $created++;
+            }
         } catch (InvalidArgumentException $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+            return response()->json(['success' => false, 'message' => $e->getMessage().($created > 0 ? " ({$created} oluşturuldu)" : '')], 422);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Randevu başarıyla oluşturuldu.',
-            'data' => $this->randevuPayload($randevu->load(['hizmet', 'hasta'])),
+            'message' => $created > 1 ? "{$created} seri randevu oluşturuldu." : 'Randevu başarıyla oluşturuldu.',
+            'adet' => $created,
+            'data' => $last ? $this->randevuPayload($last->load(['hizmet', 'hasta'])) : null,
         ], 201);
     }
 
@@ -797,23 +902,28 @@ class DoctorPanelApiController extends Controller
         $doktor = $this->doktor($request);
         $hasta = Hasta::query()->findOrFail($id);
 
-        $randevular = $doktor->randevular()
-            ->where('hasta_id', $hasta->id)
-            ->with(['hizmet:id,ad,fiyat'])
-            ->latest('tarih')
-            ->latest('saat')
-            ->get();
+        $paket = $doktor->aktifPaket();
+        $canTedavi = $paket && $paket->hasFeature('tedavi_gecmisi');
+        $canNot = $paket && $paket->hasFeature('hasta_not_dosya');
+        $canFinans = $paket && ($paket->hasFeature('finans') || $paket->hasFeature('hasta_bakiyeleri'));
 
-        $odemeler = $doktor->odemeler()
-            ->where('hasta_id', $hasta->id)
-            ->latest('odeme_tarihi')
-            ->get();
+        $randevular = $canTedavi
+            ? $doktor->randevular()
+                ->where('hasta_id', $hasta->id)
+                ->with(['hizmet:id,ad,fiyat'])
+                ->latest('tarih')
+                ->latest('saat')
+                ->get()
+            : collect();
+
+        $odemeler = $canFinans
+            ? $doktor->odemeler()->where('hasta_id', $hasta->id)->latest('odeme_tarihi')->get()
+            : collect();
 
         $toplamOdenen = (float) $odemeler->where('durum', '!=', 'iptal')->sum('odenen_tutar');
         $toplamTutar = (float) $odemeler->where('durum', '!=', 'iptal')->sum('tutar');
 
-        // Randevu bazlı borç hesabı (ödemesi eksik kalanlar)
-        if ($toplamTutar == 0 && $randevular->isNotEmpty()) {
+        if ($canFinans && $toplamTutar == 0 && $randevular->isNotEmpty()) {
             foreach ($randevular as $r) {
                 if (in_array($r->durum, ['onaylandi', 'tamamlandi'])) {
                     $toplamTutar += (float) ($r->hizmet?->fiyat ?? 0);
@@ -831,8 +941,19 @@ class DoctorPanelApiController extends Controller
                 'soyad' => $hasta->soyad,
                 'telefon' => $hasta->telefon,
                 'e_posta' => $hasta->e_posta,
-                'randevular' => $randevular->map(fn (Randevu $r) => $this->randevuPayload($r)),
-                'finans' => [
+                'tedavi_gecmisi_acik' => $canTedavi,
+                'hasta_not_acik' => $canNot,
+                'randevular' => $randevular->map(function (Randevu $r) use ($canNot) {
+                    $p = $this->randevuPayload($r);
+                    if (! $canNot) {
+                        $p['not'] = null;
+                        $p['hekim_notu'] = null;
+                        $p['aciklama'] = null;
+                    }
+
+                    return $p;
+                }),
+                'finans' => $canFinans ? [
                     'toplam_tutar' => $toplamTutar,
                     'toplam_odenen' => $toplamOdenen,
                     'kalan_bakiye' => $kalanBakiye,
@@ -845,7 +966,7 @@ class DoctorPanelApiController extends Controller
                         'odeme_tarihi' => $o->odeme_tarihi,
                         'aciklama' => $o->aciklama,
                     ]),
-                ],
+                ] : null,
             ],
         ]);
     }

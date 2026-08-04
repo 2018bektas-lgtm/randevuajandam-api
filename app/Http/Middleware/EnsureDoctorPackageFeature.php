@@ -8,11 +8,23 @@ use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Doctor panel API: require active package feature (same codes as site paket.yetki).
+ * Multiple features = OR (comma-separated or multiple params).
  */
 class EnsureDoctorPackageFeature
 {
-    public function handle(Request $request, Closure $next, string $feature): Response
+    public function handle(Request $request, Closure $next, string ...$features): Response
     {
+        $codes = [];
+        foreach ($features as $f) {
+            foreach (explode(',', $f) as $part) {
+                $part = trim($part);
+                if ($part !== '') {
+                    $codes[] = $part;
+                }
+            }
+        }
+        $codes = array_values(array_unique($codes));
+
         $doktor = $request->attributes->get('auth_doktor')
             ?? $request->attributes->get('doktor');
 
@@ -23,13 +35,21 @@ class EnsureDoctorPackageFeature
             ], 401);
         }
 
-        $paket = $doktor->aktifPaket();
+        $paket = method_exists($doktor, 'aktifPaket') ? $doktor->aktifPaket() : null;
 
-        if (! $paket || ! $paket->hasFeature($feature)) {
+        $ok = $paket && (
+            method_exists($paket, 'hasAnyFeature')
+                ? $paket->hasAnyFeature($codes)
+                : collect($codes)->contains(fn ($c) => $paket->hasFeature($c))
+        );
+
+        if (! $ok) {
             return response()->json([
                 'success' => false,
                 'message' => 'Bu özellik mevcut üyelik paketinizde yer almamaktadır. Lütfen paketinizi yükseltin.',
-                'feature' => $feature,
+                'feature' => $codes[0] ?? 'paket',
+                'features' => $codes,
+                'upgrade_required' => true,
             ], 403);
         }
 

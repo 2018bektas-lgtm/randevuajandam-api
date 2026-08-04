@@ -74,36 +74,61 @@ class PublicDoctorSiteController extends Controller
             }
         }
 
+        $paket = $doktor->aktifPaket();
+        $has = fn (string $kod) => $paket && $paket->hasFeature($kod);
+        $features = [];
+        if ($paket && method_exists($paket, 'sistemOzellikleri')) {
+            if (! $paket->relationLoaded('sistemOzellikleri')) {
+                $paket->load('sistemOzellikleri:id,kod');
+            }
+            $features = $paket->sistemOzellikleri->pluck('kod')->filter()->values()->all();
+        }
+
+        $showContact = $has('iletisim_profilde');
+        $showSocial = $has('dis_baglanti');
+        $showReviews = $has('yorum_gorunur');
+        $showBio = $has('hakkimda');
+
         return [
             'id' => $doktor->id,
             'ad_soyad' => $doktor->ad_soyad,
             'unvan' => $doktor->unvan,
             'uzmanlik_alani' => $doktor->uzmanlik_alani,
-            'biyografi' => $doktor->biyografi,
-            'mezuniyet' => $doktor->mezuniyet ?? [],
-            'telefon' => $doktor->telefon,
-            'e_posta' => $doktor->e_posta,
-            'adres' => $doktor->adres,
+            'biyografi' => $showBio ? $doktor->biyografi : null,
+            'mezuniyet' => $showBio ? ($doktor->mezuniyet ?? []) : [],
+            'telefon' => $showContact ? $doktor->telefon : null,
+            'e_posta' => $showContact ? $doktor->e_posta : null,
+            'adres' => $showContact ? $doktor->adres : null,
             'klinik_adi' => $doktor->klinik_adi ?? null,
             'profil_resmi' => site_media_url($doktor->profil_resmi),
             'il' => $doktor->il?->ad,
             'ilce' => $doktor->ilce?->ad,
             'branslar' => $doktor->branslar->pluck('ad')->values(),
             'randevuya_acik_mi' => (bool) $doktor->randevuya_acik_mi,
-            'online_gorusme' => (bool) ($doktor->aktifPaket()?->hasFeature('online_gorusme')),
+            'online_gorusme' => $has('online_gorusme'),
+            'dogrulanmis_rozet' => $has('dogrulanmis_rozet') && method_exists($doktor, 'isMeslekOnayli') && $doktor->isMeslekOnayli(),
             'randevu_periyodu' => $doktor->randevuAyari?->randevu_periyodu ?? 30,
             'enlem' => $doktor->enlem,
             'boylam' => $doktor->boylam,
-            'sosyal' => [
+            'sosyal' => $showSocial ? [
                 'instagram' => $doktor->instagram,
                 'facebook' => $doktor->facebook,
                 'youtube' => $doktor->youtube,
                 'linkedin' => $doktor->linkedin,
                 'twitter' => $doktor->twitter,
                 'web_sitesi' => $doktor->web_sitesi,
+            ] : [
+                'instagram' => null,
+                'facebook' => null,
+                'youtube' => null,
+                'linkedin' => null,
+                'twitter' => null,
+                'web_sitesi' => null,
             ],
             'calisma_saatleri' => $calisma,
-            'ortalama_puan' => $doktor->ortalama_puan ?? null,
+            'ortalama_puan' => $showReviews ? ($doktor->ortalama_puan ?? null) : null,
+            'features' => $features,
+            'paket_ozellikleri' => $features,
         ];
     }
 
@@ -120,69 +145,83 @@ class PublicDoctorSiteController extends Controller
 
     protected function siteContentPayload(Doktor $doktor): array
     {
-        $bloglar = $doktor->bloglar()
-            ->where('aktif_mi', true)
-            ->latest()
-            ->limit(30)
-            ->get()
-            ->map(fn ($b) => [
-                'id' => $b->id,
-                'slug' => $b->slug ?? \Illuminate\Support\Str::slug($b->baslik).'-'.$b->id,
-                'baslik' => $b->baslik,
-                'ozet' => \Illuminate\Support\Str::limit(strip_tags((string) $b->icerik), 160),
-                'icerik' => $b->icerik,
-                'resim' => $b->resim
-                    ? site_media_url(str_starts_with($b->resim, 'storage/')
-                        || str_starts_with($b->resim, 'uploads/')
-                        || preg_match('#^(https?:)?//#i', $b->resim)
-                        ? $b->resim
-                        : 'storage/'.$b->resim)
-                    : null,
-                'tarih' => optional($b->created_at)->format('d F Y'),
-                'meta_baslik' => $b->meta_baslik,
-                'meta_aciklama' => $b->meta_aciklama,
-            ]);
+        $paket = $doktor->aktifPaket();
+        $has = fn (string $kod) => $paket && $paket->hasFeature($kod);
 
-        $faqs = $doktor->faqs()
-            ->where('aktif', true)
-            ->orderBy('sira')
-            ->orderBy('id')
-            ->get(['id', 'soru', 'cevap', 'sira']);
+        $bloglar = $has('blog')
+            ? $doktor->bloglar()
+                ->where('aktif_mi', true)
+                ->latest()
+                ->limit(30)
+                ->get()
+                ->map(fn ($b) => [
+                    'id' => $b->id,
+                    'slug' => $b->slug ?? \Illuminate\Support\Str::slug($b->baslik).'-'.$b->id,
+                    'baslik' => $b->baslik,
+                    'ozet' => \Illuminate\Support\Str::limit(strip_tags((string) $b->icerik), 160),
+                    'icerik' => $b->icerik,
+                    'resim' => $b->resim
+                        ? site_media_url(str_starts_with($b->resim, 'storage/')
+                            || str_starts_with($b->resim, 'uploads/')
+                            || preg_match('#^(https?:)?//#i', $b->resim)
+                            ? $b->resim
+                            : 'storage/'.$b->resim)
+                        : null,
+                    'tarih' => optional($b->created_at)->format('d F Y'),
+                    'meta_baslik' => $b->meta_baslik,
+                    'meta_aciklama' => $b->meta_aciklama,
+                ])
+            : collect();
 
-        $galeri = $doktor->galeriler()
-            ->orderBy('sira')
-            ->get()
-            ->map(fn ($g) => [
-                'id' => $g->id,
-                'baslik' => $g->baslik,
-                'image' => site_media_url($g->resim_yolu),
-                'sira' => $g->sira,
-            ]);
+        $faqs = $has('faq')
+            ? $doktor->faqs()
+                ->where('aktif', true)
+                ->orderBy('sira')
+                ->orderBy('id')
+                ->get(['id', 'soru', 'cevap', 'sira'])
+            : collect();
 
-        $yorumlar = $doktor->yorumlar()
-            ->where('onay_durumu', 'onaylandi')
-            ->with('hasta:id,ad,soyad')
-            ->latest()
-            ->limit(20)
-            ->get()
-            ->map(function ($y) {
-                $ad = trim(($y->hasta?->ad ?? '').' '.($y->hasta?->soyad ?? ''));
+        $galeri = $has('galeri')
+            ? $doktor->galeriler()
+                ->orderBy('sira')
+                ->get()
+                ->map(fn ($g) => [
+                    'id' => $g->id,
+                    'baslik' => $g->baslik,
+                    'image' => site_media_url($g->resim_yolu),
+                    'sira' => $g->sira,
+                ])
+            : collect();
 
-                return [
-                    'id' => $y->id,
-                    'ad' => $ad !== '' ? $ad : 'Hasta',
-                    'metin' => $y->yorum ?? '',
-                    'puan' => (int) ($y->puan ?? 5),
-                    'doktor_yaniti' => $y->doktor_yaniti,
-                ];
-            });
+        $yorumlar = $has('yorum_gorunur')
+            ? $doktor->yorumlar()
+                ->where('onay_durumu', 'onaylandi')
+                ->with('hasta:id,ad,soyad')
+                ->latest()
+                ->limit(20)
+                ->get()
+                ->map(function ($y) {
+                    $ad = trim(($y->hasta?->ad ?? '').' '.($y->hasta?->soyad ?? ''));
+
+                    return [
+                        'id' => $y->id,
+                        'ad' => $ad !== '' ? $ad : 'Hasta',
+                        'metin' => $y->yorum ?? '',
+                        'puan' => (int) ($y->puan ?? 5),
+                        'doktor_yaniti' => $y->doktor_yaniti,
+                    ];
+                })
+            : collect();
 
         return [
             'bloglar' => $bloglar,
             'faqs' => $faqs,
             'galeri' => $galeri,
             'yorumlar' => $yorumlar,
-            'egitimler' => $this->mapEgitimler($doktor),
+            'egitimler' => $has('egitimler') ? $this->mapEgitimler($doktor) : [],
+            'features' => $paket && method_exists($paket, 'sistemOzellikleri')
+                ? $paket->sistemOzellikleri()->pluck('kod')->filter()->values()->all()
+                : [],
         ];
     }
 
@@ -224,6 +263,10 @@ class PublicDoctorSiteController extends Controller
     public function educations(Request $request): JsonResponse
     {
         $doktor = $this->doktor($request);
+        $paket = $doktor->aktifPaket();
+        if (! $paket || ! $paket->hasFeature('egitimler')) {
+            return response()->json(['success' => true, 'data' => []]);
+        }
 
         return response()->json([
             'success' => true,

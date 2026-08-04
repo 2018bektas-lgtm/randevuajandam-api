@@ -407,6 +407,15 @@ class DoctorAuthApiController extends Controller
 
     protected function doctorPayload(Doktor $doktor, bool $detailed = false): array
     {
+        $paket = method_exists($doktor, 'aktifPaket') ? $doktor->aktifPaket() : $doktor->paket;
+        $features = [];
+        if ($paket && method_exists($paket, 'sistemOzellikleri')) {
+            if (! $paket->relationLoaded('sistemOzellikleri')) {
+                $paket->load('sistemOzellikleri:id,kod,ad');
+            }
+            $features = $paket->sistemOzellikleri->pluck('kod')->filter()->values()->all();
+        }
+
         $base = [
             'id' => $doktor->id,
             'ad_soyad' => $doktor->ad_soyad,
@@ -418,6 +427,12 @@ class DoctorAuthApiController extends Controller
             'randevuya_acik_mi' => (bool) $doktor->randevuya_acik_mi,
             'profil_resmi' => site_media_url($doktor->profil_resmi),
             'two_factor_enabled' => $this->hasTwoFactor($doktor),
+            'paket' => $paket ? [
+                'id' => $paket->id,
+                'ad' => $paket->ad ?? null,
+            ] : null,
+            'features' => $features,
+            'paket_ozellikleri' => $features,
         ];
 
         if (! $detailed) {
@@ -442,7 +457,6 @@ class DoctorAuthApiController extends Controller
             'boylam' => $doktor->boylam,
             'mezuniyet' => $doktor->mezuniyet,
             'branslar' => $doktor->branslar?->map(fn ($b) => ['id' => $b->id, 'ad' => $b->ad, 'slug' => $b->slug])->values() ?? [],
-            'paket' => $doktor->paket?->only(['id', 'ad']),
             'randevu_ayari' => $doktor->randevuAyari,
         ]);
     }

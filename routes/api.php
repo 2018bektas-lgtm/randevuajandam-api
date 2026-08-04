@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\DoctorAuthApiController;
 use App\Http\Controllers\Api\DoctorContentApiController;
 use App\Http\Controllers\Api\DoctorEducationApiController;
+use App\Http\Controllers\Api\DoctorExtraApiController;
 use App\Http\Controllers\Api\DoctorFinansApiController;
 use App\Http\Controllers\Api\DoctorPanelApiController;
 use App\Http\Controllers\Api\PublicClinicSiteController;
@@ -74,35 +75,66 @@ $registerDoctorPanelRoutes = function (): void {
         Route::post('/hakkimda', [DoctorPanelApiController::class, 'updateAbout']);
     });
 
-    Route::get('/randevu-ayarlari', [DoctorPanelApiController::class, 'randevuAyarlari']);
-    Route::put('/randevu-ayarlari', [DoctorPanelApiController::class, 'updateRandevuAyarlari']);
-    Route::put('/calisma-saatleri', [DoctorPanelApiController::class, 'updateCalismaSaatleri']);
+    Route::middleware('doctor.paket:online_takvim')->group(function () {
+        Route::get('/randevu-ayarlari', [DoctorPanelApiController::class, 'randevuAyarlari']);
+        Route::put('/randevu-ayarlari', [DoctorPanelApiController::class, 'updateRandevuAyarlari']);
+        Route::put('/calisma-saatleri', [DoctorPanelApiController::class, 'updateCalismaSaatleri']);
 
-    Route::get('/randevular', [DoctorPanelApiController::class, 'randevular']);
-    Route::get('/takvim/events', [DoctorPanelApiController::class, 'calendarEvents']);
-    Route::post('/takvim/periyot', [DoctorPanelApiController::class, 'updatePeriod']);
-    Route::post('/randevular', [DoctorPanelApiController::class, 'storeRandevu']);
-    Route::post('/randevular/misafir', [DoctorPanelApiController::class, 'storeRandevuMisafir']);
-    Route::delete('/randevular/{id}', [DoctorPanelApiController::class, 'destroyRandevu']);
+        Route::get('/randevular', [DoctorPanelApiController::class, 'randevular']);
+        Route::get('/takvim/events', [DoctorPanelApiController::class, 'calendarEvents']);
+        Route::post('/takvim/periyot', [DoctorPanelApiController::class, 'updatePeriod']);
+        Route::post('/randevular', [DoctorPanelApiController::class, 'storeRandevu']);
+        Route::post('/randevular/misafir', [DoctorPanelApiController::class, 'storeRandevuMisafir']);
+        Route::delete('/randevular/{id}', [DoctorPanelApiController::class, 'destroyRandevu']);
+        Route::put('/randevular/{id}', [DoctorPanelApiController::class, 'updateRandevu']);
+        Route::post('/randevular/{id}/guncelle', [DoctorPanelApiController::class, 'updateRandevu']);
+        Route::put('/randevular/{id}/reschedule', [DoctorPanelApiController::class, 'reschedule']);
+        Route::post('/randevular/{id}/reschedule', [DoctorPanelApiController::class, 'reschedule']);
+
+        Route::get('/hastalar/ara', [DoctorPanelApiController::class, 'searchHastalar']);
+        Route::get('/izinler', [DoctorPanelApiController::class, 'leaves']);
+        Route::post('/izinler', [DoctorPanelApiController::class, 'storeLeave']);
+        Route::delete('/izinler/{id}', [DoctorPanelApiController::class, 'destroyLeave']);
+    });
+
+    // Durum güncelle: randevu_talepleri controller'da da kontrol edilebilir
     Route::put('/randevular/{id}/durum', [DoctorPanelApiController::class, 'updateRandevuDurum']);
-    Route::put('/randevular/{id}', [DoctorPanelApiController::class, 'updateRandevu']);
-    Route::post('/randevular/{id}/guncelle', [DoctorPanelApiController::class, 'updateRandevu']);
-    Route::put('/randevular/{id}/reschedule', [DoctorPanelApiController::class, 'reschedule']);
-    Route::post('/randevular/{id}/reschedule', [DoctorPanelApiController::class, 'reschedule']);
 
-    Route::get('/hastalar/ara', [DoctorPanelApiController::class, 'searchHastalar']);
-    Route::get('/hastalar', [DoctorPanelApiController::class, 'patients']);
-    Route::get('/hastalar/{id}', [DoctorPanelApiController::class, 'showHasta']);
-    Route::post('/hastalar', [DoctorPanelApiController::class, 'storeHasta']);
-    Route::put('/hastalar/{id}', [DoctorPanelApiController::class, 'updateHasta']);
-    Route::delete('/hastalar/{id}', [DoctorPanelApiController::class, 'destroyHasta']);
+    Route::middleware('doctor.paket:hasta_kartlari')->group(function () {
+        Route::get('/hastalar', [DoctorPanelApiController::class, 'patients']);
+        Route::middleware('doctor.paket:hasta_export')->get('/hastalar/export', [DoctorExtraApiController::class, 'patientsExport']);
+        Route::post('/hastalar', [DoctorPanelApiController::class, 'storeHasta']);
+        Route::get('/hastalar/{id}', [DoctorPanelApiController::class, 'showHasta'])->whereNumber('id');
+        Route::put('/hastalar/{id}', [DoctorPanelApiController::class, 'updateHasta'])->whereNumber('id');
+        Route::delete('/hastalar/{id}', [DoctorPanelApiController::class, 'destroyHasta'])->whereNumber('id');
+        Route::middleware('doctor.paket:hasta_not_dosya')->group(function () {
+            Route::get('/hastalar/{id}/dosyalar', [DoctorExtraApiController::class, 'patientFiles'])->whereNumber('id');
+            Route::post('/hastalar/{id}/dosyalar', [DoctorExtraApiController::class, 'storePatientFile'])->whereNumber('id');
+            Route::delete('/hastalar/dosyalar/{id}', [DoctorExtraApiController::class, 'destroyPatientFile'])->whereNumber('id');
+        });
+    });
 
-    Route::get('/izinler', [DoctorPanelApiController::class, 'leaves']);
-    Route::post('/izinler', [DoctorPanelApiController::class, 'storeLeave']);
-    Route::delete('/izinler/{id}', [DoctorPanelApiController::class, 'destroyLeave']);
+    Route::middleware('doctor.paket:hizli_slot')->group(function () {
+        Route::get('/hizli-kapat/slots', [DoctorPanelApiController::class, 'quickCloseSlots']);
+        Route::post('/hizli-kapat', [DoctorPanelApiController::class, 'quickCloseSave']);
+    });
 
-    Route::get('/hizli-kapat/slots', [DoctorPanelApiController::class, 'quickCloseSlots']);
-    Route::post('/hizli-kapat', [DoctorPanelApiController::class, 'quickCloseSave']);
+    Route::middleware('doctor.paket:bekleme_listesi')->group(function () {
+        Route::get('/bekleme-listesi', [DoctorExtraApiController::class, 'waitlist']);
+        Route::post('/bekleme-listesi/{id}/durum', [DoctorExtraApiController::class, 'waitlistUpdateStatus'])->whereNumber('id');
+        Route::post('/bekleme-listesi/{id}/bildir', [DoctorExtraApiController::class, 'waitlistNotify'])->whereNumber('id');
+        Route::delete('/bekleme-listesi/{id}', [DoctorExtraApiController::class, 'waitlistDestroy'])->whereNumber('id');
+    });
+
+    Route::middleware('doctor.paket:ical_export')->get('/takvim/ical', [DoctorExtraApiController::class, 'ical']);
+
+    Route::middleware('doctor.paket:onam_formu')->group(function () {
+        Route::get('/onam-formlari', [DoctorExtraApiController::class, 'consentForms']);
+        Route::post('/onam-formlari', [DoctorExtraApiController::class, 'storeConsentForm']);
+        Route::put('/onam-formlari/{id}', [DoctorExtraApiController::class, 'updateConsentForm'])->whereNumber('id');
+        Route::delete('/onam-formlari/{id}', [DoctorExtraApiController::class, 'destroyConsentForm'])->whereNumber('id');
+        Route::post('/onam-formlari/imza', [DoctorExtraApiController::class, 'signConsentForm']);
+    });
 
     Route::get('/hizmetler', [DoctorPanelApiController::class, 'hizmetler']);
     Route::post('/hizmetler', [DoctorPanelApiController::class, 'storeHizmet']);
@@ -141,11 +173,12 @@ $registerDoctorPanelRoutes = function (): void {
         Route::delete('/galeri/{id}', [DoctorContentApiController::class, 'destroyGallery']);
     });
 
-    Route::middleware('doctor.paket:yorum')->group(function () {
-        Route::get('/yorumlar', [DoctorContentApiController::class, 'reviews']);
+    // Yorum listesi çekirdek; yanıt paket özelliği
+    Route::get('/yorumlar', [DoctorContentApiController::class, 'reviews']);
+    Route::middleware('doctor.paket:yorum_yanit,yorum')->group(function () {
         Route::post('/yorumlar/{id}/yanit', [DoctorContentApiController::class, 'replyReview']);
-        Route::put('/yorumlar/{id}/durum', [DoctorContentApiController::class, 'moderateReview']);
     });
+    Route::put('/yorumlar/{id}/durum', [DoctorContentApiController::class, 'moderateReview']);
 
     // Eğitimler (kurs/webinar) — ana site hekim paneli ile aynı
     Route::middleware('doctor.paket:egitimler')->group(function () {
@@ -184,17 +217,19 @@ $registerDoctorPanelRoutes = function (): void {
             Route::put('/giderler/{id}', [DoctorFinansApiController::class, 'updateGider']);
             Route::post('/giderler/{id}/guncelle', [DoctorFinansApiController::class, 'updateGider']);
             Route::delete('/giderler/{id}', [DoctorFinansApiController::class, 'destroyGider']);
-            Route::get('/hasta-bakiyeleri', [DoctorFinansApiController::class, 'hastaBakiyeleri']);
-            Route::get('/hasta/{hastaId}', [DoctorFinansApiController::class, 'hastaHesap'])->whereNumber('hastaId');
-            Route::post('/hasta/{hastaId}/tahsilat', [DoctorFinansApiController::class, 'hastaTahsilat'])->whereNumber('hastaId');
-            Route::post('/hasta/{hastaId}/borc', [DoctorFinansApiController::class, 'hastaBorcEkle'])->whereNumber('hastaId');
-            Route::get('/rapor', [DoctorFinansApiController::class, 'rapor']);
+            Route::middleware('doctor.paket:hasta_bakiyeleri')->group(function () {
+                Route::get('/hasta-bakiyeleri', [DoctorFinansApiController::class, 'hastaBakiyeleri']);
+                Route::get('/hasta/{hastaId}', [DoctorFinansApiController::class, 'hastaHesap'])->whereNumber('hastaId');
+                Route::post('/hasta/{hastaId}/tahsilat', [DoctorFinansApiController::class, 'hastaTahsilat'])->whereNumber('hastaId');
+                Route::post('/hasta/{hastaId}/borc', [DoctorFinansApiController::class, 'hastaBorcEkle'])->whereNumber('hastaId');
+            });
+            Route::middleware('doctor.paket:finans_rapor')->get('/rapor', [DoctorFinansApiController::class, 'rapor']);
         });
 
         // Aliases for English/Mobile API paths
         Route::prefix('finance')->group(function () {
             Route::get('/overview', [DoctorFinansApiController::class, 'ozet']);
-            Route::get('/report', [DoctorFinansApiController::class, 'rapor']);
+            Route::middleware('doctor.paket:finans_rapor')->get('/report', [DoctorFinansApiController::class, 'rapor']);
 
             Route::get('/categories', [DoctorFinansApiController::class, 'kategoriler']);
             Route::post('/categories', [DoctorFinansApiController::class, 'storeKategori']);
@@ -220,10 +255,12 @@ $registerDoctorPanelRoutes = function (): void {
             Route::post('/expenses/{id}/guncelle', [DoctorFinansApiController::class, 'updateGider'])->whereNumber('id');
             Route::delete('/expenses/{id}', [DoctorFinansApiController::class, 'destroyGider'])->whereNumber('id');
 
-            Route::get('/balances', [DoctorFinansApiController::class, 'hastaBakiyeleri']);
-            Route::get('/patients/{hastaId}', [DoctorFinansApiController::class, 'hastaHesap'])->whereNumber('hastaId');
-            Route::post('/patients/{hastaId}/collect', [DoctorFinansApiController::class, 'hastaTahsilat'])->whereNumber('hastaId');
-            Route::post('/patients/{hastaId}/debt', [DoctorFinansApiController::class, 'hastaBorcEkle'])->whereNumber('hastaId');
+            Route::middleware('doctor.paket:hasta_bakiyeleri')->group(function () {
+                Route::get('/balances', [DoctorFinansApiController::class, 'hastaBakiyeleri']);
+                Route::get('/patients/{hastaId}', [DoctorFinansApiController::class, 'hastaHesap'])->whereNumber('hastaId');
+                Route::post('/patients/{hastaId}/collect', [DoctorFinansApiController::class, 'hastaTahsilat'])->whereNumber('hastaId');
+                Route::post('/patients/{hastaId}/debt', [DoctorFinansApiController::class, 'hastaBorcEkle'])->whereNumber('hastaId');
+            });
         });
         Route::post('/finans/income', [DoctorFinansApiController::class, 'storeGelir']);
     });
