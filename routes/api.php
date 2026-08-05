@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AsistanApiController;
 use App\Http\Controllers\Api\DoctorAuthApiController;
 use App\Http\Controllers\Api\DoctorContentApiController;
 use App\Http\Controllers\Api\DoctorEducationApiController;
@@ -263,6 +264,12 @@ $registerDoctorPanelRoutes = function (): void {
             });
         });
         Route::post('/finans/income', [DoctorFinansApiController::class, 'storeGelir']);
+    });
+
+    // AI Asistan — Profesyonel+ paket
+    Route::middleware('doctor.paket:ai_asistan')->group(function () {
+        Route::post('/asistan/mesaj', [AsistanApiController::class, 'mesaj'])
+            ->middleware('throttle:100,1440');
     });
 };
 
