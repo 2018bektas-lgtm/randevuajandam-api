@@ -59,7 +59,8 @@ class DoctorContentApiController extends Controller
         $data = $this->validateBlog($request);
 
         if ($request->hasFile('resim')) {
-            $data['resim'] = $request->file('resim')->store('uploads/blog', 'public');
+            $data['resim'] = $this->storeSharedUpload($request->file('resim'), 'uploads/blog')
+                ?: $request->file('resim')->store('uploads/blog', 'public');
         }
         $data['aktif_mi'] = $request->boolean('aktif_mi', true);
 
@@ -73,12 +74,19 @@ class DoctorContentApiController extends Controller
         $doktor = $this->doktor($request);
         $blog = $doktor->bloglar()->findOrFail($id);
         $data = $this->validateBlog($request);
+        unset($data['resim_sil']);
 
         if ($request->hasFile('resim')) {
             if ($blog->resim) {
+                $this->deleteSharedUpload($blog->resim);
                 Storage::disk('public')->delete($blog->resim);
             }
-            $data['resim'] = $request->file('resim')->store('uploads/blog', 'public');
+            $data['resim'] = $this->storeSharedUpload($request->file('resim'), 'uploads/blog')
+                ?: $request->file('resim')->store('uploads/blog', 'public');
+        } elseif ($request->boolean('resim_sil')) {
+            $this->deleteSharedUpload($blog->resim);
+            Storage::disk('public')->delete((string) $blog->resim);
+            $data['resim'] = null;
         }
         if ($request->has('aktif_mi')) {
             $data['aktif_mi'] = $request->boolean('aktif_mi');
@@ -103,6 +111,7 @@ class DoctorContentApiController extends Controller
             'baslik' => ['required', 'string', 'max:255'],
             'icerik' => ['required', 'string'],
             'resim' => ['nullable', 'image', 'mimes:jpeg,png,jpg,gif,webp', 'max:10240'],
+            'resim_sil' => ['nullable'],
             'meta_baslik' => ['nullable', 'string', 'max:255'],
             'meta_aciklama' => ['nullable', 'string', 'max:255'],
             'meta_anahtar_kelimeler' => ['nullable', 'string', 'max:255'],
@@ -325,5 +334,42 @@ class DoctorContentApiController extends Controller
         $yorum->update(['onay_durumu' => $v['onay_durumu']]);
 
         return response()->json(['success' => true, 'message' => 'Yorum durumu güncellendi.', 'data' => $yorum->fresh()]);
+    }
+
+    protected function storeSharedUpload($file, string $subdir = 'uploads'): ?string
+    {
+        if (! $file) {
+            return null;
+        }
+
+        $root = rtrim((string) app('shared_public_path'), '/\\');
+        if ($root === '' || ! is_dir($root)) {
+            return null;
+        }
+
+        $subdir = trim(str_replace('\\', '/', $subdir), '/');
+        $dir = $root.DIRECTORY_SEPARATOR.str_replace('/', DIRECTORY_SEPARATOR, $subdir);
+        if (! File::exists($dir)) {
+            File::makeDirectory($dir, 0755, true);
+        }
+
+        $ext = strtolower($file->getClientOriginalExtension() ?: 'jpg');
+        $name = 'doktor_'.time().'_'.Str::lower(Str::random(8)).'.'.$ext;
+        $file->move($dir, $name);
+
+        return $subdir.'/'.$name;
+    }
+
+    protected function deleteSharedUpload(?string $relative): void
+    {
+        if (! $relative || preg_match('#^(https?:)?//#i', $relative) || str_starts_with($relative, 'data:')) {
+            return;
+        }
+
+        $relative = ltrim(str_replace('\\', '/', $relative), '/');
+        $path = rtrim((string) app('shared_public_path'), '/\\').DIRECTORY_SEPARATOR.str_replace('/', DIRECTORY_SEPARATOR, $relative);
+        if (File::exists($path)) {
+            File::delete($path);
+        }
     }
 }

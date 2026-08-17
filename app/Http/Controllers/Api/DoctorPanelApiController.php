@@ -1488,9 +1488,10 @@ class DoctorPanelApiController extends Controller
             'meta_aciklama' => ['nullable', 'string', 'max:500'],
             'meta_anahtar_kelimeler' => ['nullable', 'string', 'max:500'],
             'resim' => ['nullable', 'image', 'mimes:jpeg,png,jpg,gif,webp', 'max:10240'],
+            'resim_sil' => ['nullable'],
         ]);
 
-        $data = collect($validated)->except('resim')->all();
+        $data = collect($validated)->except(['resim', 'resim_sil'])->all();
         if ($request->has('aktif_mi')) {
             $data['aktif_mi'] = $request->boolean('aktif_mi');
         }
@@ -1501,6 +1502,9 @@ class DoctorPanelApiController extends Controller
                 $this->deleteSharedUpload($hizmet->resim);
                 $data['resim'] = $rel;
             }
+        } elseif ($request->boolean('resim_sil')) {
+            $this->deleteSharedUpload($hizmet->resim);
+            $data['resim'] = null;
         }
 
         $hizmet->update($data);

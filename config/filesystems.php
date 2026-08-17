@@ -40,8 +40,10 @@ return [
 
         'public' => [
             'driver' => 'local',
-            'root' => storage_path('app/public'),
-            'url' => env('APP_URL').'/storage',
+            'root' => env('SHARED_PUBLIC_PATH')
+                ? rtrim((string) env('SHARED_PUBLIC_PATH'), '/\\')
+                : storage_path('app/public'),
+            'url' => env('MEDIA_URL', env('APP_URL').'/storage'),
             'visibility' => 'public',
             'throw' => false,
             'report' => false,
