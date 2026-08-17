@@ -35,4 +35,12 @@ return [
         ],
     ],
 
+    /*
+    | Gemini — hekim paneli dijital asistan (site AsistanService ile aynı)
+    */
+    'gemini' => [
+        'key' => env('GEMINI_API_KEY'),
+        'model' => env('GEMINI_MODEL', 'gemini-3.1-flash-lite'),
+    ],
+
 ];
