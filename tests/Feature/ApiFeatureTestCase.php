@@ -14,7 +14,15 @@ abstract class ApiFeatureTestCase extends TestCase
 
     protected function migrateDatabases()
     {
-        $sitePath = realpath(__DIR__.'/../../../site/database/migrations');
+        // Sibling: randevuajandam-api ↔ randevuajandam-site (aynı üst dizin altında)
+        $sitePath = realpath(__DIR__.'/../../../randevuajandam-site/database/migrations');
+
+        if ($sitePath === false) {
+            throw new \RuntimeException(
+                'randevuajandam-site/database/migrations bulunamadı. '
+                .'randevuajandam-site projesinin randevuajandam-api ile aynı üst dizinde olduğundan emin olun.'
+            );
+        }
 
         $this->artisan('migrate:fresh', [
             '--path' => $sitePath,
