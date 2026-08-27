@@ -512,21 +512,8 @@ class PublicDoctorSiteController extends Controller
             }
         }
 
-        $randevular = $doktor->randevular()
-            ->with('hizmet')
-            ->whereDate('tarih', $tarih->toDateString())
-            ->whereIn('durum', ['beklemede', 'onaylandi', 'tamamlandi'])
-            ->get();
-
-        $izinler = $doktor->izinler()
-            ->where('baslangic_zaman', '<=', $tarih->copy()->endOfDay())
-            ->where('bitis_zaman', '>=', $tarih->copy()->startOfDay())
-            ->get();
-
-        $gunluk = $slotService->generateGunlukSlotlar($doktor, $tarih, $randevular, $izinler, $periyot);
-
-        $minSaat = $tarih->isToday() ? now()->format('H:i') : null;
-        $bos = collect($slotService->bosBaslangicSlotlari($gunluk, $periyot, $hizmetSure, $minSaat))->values();
+        $all = $slotService->publicGunlukSlotlar($doktor, $tarih, $hizmetSure);
+        $bos = collect($all)->where('musait', true)->values();
 
         return response()->json([
             'success' => true,
@@ -534,7 +521,8 @@ class PublicDoctorSiteController extends Controller
                 'date' => $tarih->toDateString(),
                 'periyot' => $periyot,
                 'hizmet_sure' => $hizmetSure,
-                'slots' => $bos,
+                'slots' => $all,
+                'musait' => $bos,
             ],
         ]);
     }
