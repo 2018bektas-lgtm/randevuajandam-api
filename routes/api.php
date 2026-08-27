@@ -30,6 +30,7 @@ Route::prefix('v1/public')
         Route::post('/educations/apply', [PublicDoctorSiteController::class, 'storeEducationApplication'])->middleware('throttle:10,1');
         Route::get('/educations/{slugOrId}', [PublicDoctorSiteController::class, 'educationShow']);
         Route::get('/slots', [PublicDoctorSiteController::class, 'slots']);
+        Route::get('/availability', [PublicDoctorSiteController::class, 'availability']);
         Route::post('/otp/send', [PublicDoctorSiteController::class, 'sendOtp'])->middleware('throttle:8,1');
         Route::post('/otp/verify', [PublicDoctorSiteController::class, 'verifyOtp'])->middleware('throttle:15,1');
         Route::post('/appointments', [PublicDoctorSiteController::class, 'storeAppointment'])->middleware('throttle:10,1');

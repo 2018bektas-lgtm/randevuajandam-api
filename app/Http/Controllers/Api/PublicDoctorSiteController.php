@@ -480,6 +480,7 @@ class PublicDoctorSiteController extends Controller
     {
         $request->validate([
             'date' => ['required', 'date_format:Y-m-d', 'after_or_equal:today'],
+            'hizmet_id' => ['nullable', 'integer', 'min:1'],
         ], [
             'date.required' => 'Tarih zorunludur.',
             'date.after_or_equal' => 'Geçmiş bir tarih seçilemez.',
@@ -500,8 +501,19 @@ class PublicDoctorSiteController extends Controller
 
         $tarih = Carbon::parse($request->date)->startOfDay();
         $periyot = $slotService->getPeriyot($doktor);
+        $hizmetSure = $periyot;
+        if ($request->filled('hizmet_id')) {
+            $hizmet = $doktor->hizmetler()
+                ->where('id', (int) $request->hizmet_id)
+                ->where('aktif_mi', true)
+                ->first();
+            if ($hizmet && (int) $hizmet->sure > 0) {
+                $hizmetSure = (int) $hizmet->sure;
+            }
+        }
 
         $randevular = $doktor->randevular()
+            ->with('hizmet')
             ->whereDate('tarih', $tarih->toDateString())
             ->whereIn('durum', ['beklemede', 'onaylandi', 'tamamlandi'])
             ->get();
@@ -513,26 +525,60 @@ class PublicDoctorSiteController extends Controller
 
         $gunluk = $slotService->generateGunlukSlotlar($doktor, $tarih, $randevular, $izinler, $periyot);
 
-        $bos = collect($gunluk)
-            ->where('durum', 'bos')
-            ->map(fn ($s) => [
-                'saat' => $s['saat_string'],
-                'saat_bitis' => $s['saat_bitis'],
-            ])
-            ->values();
-
-        // Filter past times for today
-        if ($tarih->isToday()) {
-            $now = now()->format('H:i');
-            $bos = $bos->filter(fn ($s) => $s['saat'] > $now)->values();
-        }
+        $minSaat = $tarih->isToday() ? now()->format('H:i') : null;
+        $bos = collect($slotService->bosBaslangicSlotlari($gunluk, $periyot, $hizmetSure, $minSaat))->values();
 
         return response()->json([
             'success' => true,
             'data' => [
                 'date' => $tarih->toDateString(),
                 'periyot' => $periyot,
+                'hizmet_sure' => $hizmetSure,
                 'slots' => $bos,
+            ],
+        ]);
+    }
+
+    /**
+     * Müsait günler (takvim). Site SlotService — mevcut randevularla çakışmaz.
+     */
+    public function availability(Request $request, SlotService $slotService): JsonResponse
+    {
+        $request->validate([
+            'from' => ['required', 'date_format:Y-m-d'],
+            'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:from'],
+            'hizmet_id' => ['nullable', 'integer', 'min:1'],
+        ]);
+
+        $doktor = $this->doktor($request);
+        $from = Carbon::parse($request->from)->startOfDay();
+        $to = Carbon::parse($request->to)->startOfDay();
+        if ($from->lt(today())) {
+            $from = today();
+        }
+        if ($from->diffInDays($to) > 42) {
+            $to = $from->copy()->addDays(42);
+        }
+
+        $hizmetSure = $slotService->getPeriyot($doktor);
+        if ($request->filled('hizmet_id')) {
+            $hizmet = $doktor->hizmetler()
+                ->where('id', (int) $request->hizmet_id)
+                ->where('aktif_mi', true)
+                ->first();
+            if ($hizmet && (int) $hizmet->sure > 0) {
+                $hizmetSure = (int) $hizmet->sure;
+            }
+        }
+
+        $dates = $slotService->availableDatesInRange($doktor, $from, $to, $hizmetSure);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'from' => $from->toDateString(),
+                'to' => $to->toDateString(),
+                'dates' => $dates,
             ],
         ]);
     }
