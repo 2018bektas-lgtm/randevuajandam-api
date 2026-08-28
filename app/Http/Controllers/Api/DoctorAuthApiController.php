@@ -422,6 +422,8 @@ class DoctorAuthApiController extends Controller
             'unvan' => $doktor->unvan,
             'e_posta' => $doktor->e_posta,
             'telefon' => $doktor->telefon,
+            'hasta_telefon' => $doktor->hasta_telefon,
+            'hasta_whatsapp' => $doktor->hasta_whatsapp,
             'uzmanlik_alani' => $doktor->uzmanlik_alani,
             'aktif_mi' => (bool) $doktor->aktif_mi,
             'randevuya_acik_mi' => (bool) $doktor->randevuya_acik_mi,

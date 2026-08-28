@@ -101,6 +101,8 @@ class DoctorPanelApiController extends Controller
             'ad_soyad' => ['sometimes', 'string', 'max:255'],
             'unvan' => ['nullable', 'string', 'max:100'],
             'telefon' => ['sometimes', 'string', 'max:40'],
+            'hasta_telefon' => ['nullable', 'string', 'max:40'],
+            'hasta_whatsapp' => ['nullable', 'string', 'max:40'],
             'uzmanlik_alani' => ['nullable', 'string', 'max:255'],
             'biyografi' => ['nullable', 'string', 'max:10000'],
             'adres' => ['nullable', 'string', 'max:500'],
@@ -131,6 +133,12 @@ class DoctorPanelApiController extends Controller
             }
         }
         unset($validated['ilce']);
+
+        foreach (['hasta_telefon', 'hasta_whatsapp'] as $k) {
+            if (array_key_exists($k, $validated) && trim((string) $validated[$k]) === '') {
+                $validated[$k] = null;
+            }
+        }
 
         if ($request->hasFile('profil_resmi')) {
             $request->validate([
