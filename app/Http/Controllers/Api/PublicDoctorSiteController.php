@@ -107,6 +107,9 @@ class PublicDoctorSiteController extends Controller
             'branslar' => $doktor->branslar->pluck('ad')->values(),
             'randevuya_acik_mi' => (bool) $doktor->randevuya_acik_mi,
             'online_gorusme' => $has('online_gorusme'),
+            // Hekimin randevu ayarlarindan gorusme turu anahtarlari (varsayilan: acik)
+            'online_randevu_aktif' => (bool) ($doktor->randevuAyari->online_randevu_aktif ?? true),
+            'yuzyuze_randevu_aktif' => (bool) ($doktor->randevuAyari->yuzyuze_randevu_aktif ?? true),
             'dogrulanmis_rozet' => $has('dogrulanmis_rozet') && method_exists($doktor, 'isMeslekOnayli') && $doktor->isMeslekOnayli(),
             'randevu_periyodu' => $doktor->randevuAyari?->randevu_periyodu ?? 30,
             'enlem' => $doktor->enlem,
