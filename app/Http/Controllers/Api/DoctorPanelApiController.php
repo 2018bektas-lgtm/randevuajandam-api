@@ -373,8 +373,8 @@ class DoctorPanelApiController extends Controller
             $events[] = [
                 'id' => 'randevu_'.$randevu->id,
                 'title' => ($isOnline ? '📹 ' : '').trim($randevu->ad.' '.$randevu->soyad).' ('.($randevu->hizmet?->ad ?? 'Hizmet').')',
-                'start' => $startDateTime->toIso8601String(),
-                'end' => $endDateTime->toIso8601String(),
+                'start' => $startDateTime->format('Y-m-d\TH:i:s'),
+                'end' => $endDateTime->format('Y-m-d\TH:i:s'),
                 'backgroundColor' => $color,
                 'borderColor' => $color,
                 'textColor' => '#ffffff',
@@ -433,10 +433,10 @@ class DoctorPanelApiController extends Controller
             foreach ($izinler as $izin) {
                 $isHizli = ($izin->aciklama === 'Hızlı Randevu Kapatma');
                 $bas = $izin->baslangic_zaman instanceof \DateTimeInterface
-                    ? $izin->baslangic_zaman->format('c')
+                    ? $izin->baslangic_zaman->format('Y-m-d\TH:i:s')
                     : (string) $izin->baslangic_zaman;
                 $bit = $izin->bitis_zaman instanceof \DateTimeInterface
-                    ? $izin->bitis_zaman->format('c')
+                    ? $izin->bitis_zaman->format('Y-m-d\TH:i:s')
                     : (string) $izin->bitis_zaman;
 
                 if ($isHizli) {
