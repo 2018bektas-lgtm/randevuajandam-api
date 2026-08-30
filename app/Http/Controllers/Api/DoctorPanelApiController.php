@@ -850,7 +850,7 @@ class DoctorPanelApiController extends Controller
         }
 
         try {
-            $bookingService->reschedule($randevu, $validated['tarih'], $validated['saat']);
+            $bookingService->reschedule($randevu, $validated['tarih'], $validated['saat'], hekimTarafindan: true);
         } catch (InvalidArgumentException $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
         }
